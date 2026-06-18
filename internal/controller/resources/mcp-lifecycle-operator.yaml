@@ -89,7 +89,6 @@ spec:
                       Use this to pass configuration flags to the server.
                       Example: ["--config", "/etc/mcp-config/config.toml", "--verbose"]
                       When not specified, the container image's default arguments (CMD/ENTRYPOINT) are used.
-                      An empty array [] is allowed and will override the container image's default arguments with no arguments.
                       Empty strings within the array are not allowed.
                     items:
                       type: string
@@ -1826,10 +1825,8 @@ rules:
   - services
   verbs:
   - create
-  - delete
   - get
   - list
-  - patch
   - update
   - watch
 - apiGroups:
@@ -1846,10 +1843,8 @@ rules:
   - deployments
   verbs:
   - create
-  - delete
   - get
   - list
-  - patch
   - update
   - watch
 - apiGroups:
@@ -1857,19 +1852,9 @@ rules:
   resources:
   - mcpservers
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
-- apiGroups:
-  - mcp.x-k8s.io
-  resources:
-  - mcpservers/finalizers
-  verbs:
-  - update
 - apiGroups:
   - mcp.x-k8s.io
   resources:
@@ -1877,7 +1862,6 @@ rules:
   verbs:
   - get
   - patch
-  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -2094,10 +2078,10 @@ spec:
         resources:
           limits:
             cpu: 500m
-            memory: 128Mi
+            memory: 512Mi
           requests:
             cpu: 10m
-            memory: 64Mi
+            memory: 128Mi
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

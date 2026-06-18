@@ -93,6 +93,17 @@ func main() {
 
 	manifestProvider := manifests.NewKustomizeProvider(controller.ResourcesFS)
 
+	podNamespace := os.Getenv("POD_NAMESPACE")
+	if podNamespace == "" {
+		log.Error(nil, "missing required environment variable", "name", "POD_NAMESPACE")
+		os.Exit(1)
+	}
+	operatorVersion := os.Getenv("OPERATOR_VERSION")
+	if operatorVersion == "" {
+		log.Error(nil, "missing required environment variable", "name", "OPERATOR_VERSION")
+		os.Exit(1)
+	}
+
 	reconciler := &controller.MCPLifecycleOperatorReconciler{
 		Client:           mgr.GetClient(),
 		Scheme:           mgr.GetScheme(),
@@ -100,8 +111,8 @@ func main() {
 		DynamicClient:    dynClient,
 		DiscoveryClient:  discoveryClient,
 		ManifestProvider: manifestProvider,
-		OperatorVersion:  os.Getenv("OPERATOR_VERSION"),
-		PodNamespace:     os.Getenv("POD_NAMESPACE"),
+		OperatorVersion:  operatorVersion,
+		PodNamespace:     podNamespace,
 	}
 
 	if err := reconciler.SetupWithManager(mgr); err != nil {

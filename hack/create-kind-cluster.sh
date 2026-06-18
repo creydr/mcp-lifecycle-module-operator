@@ -15,6 +15,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --container-tool)
       CONTAINER_TOOL="$2"
+      if [[ "$CONTAINER_TOOL" != "docker" && "$CONTAINER_TOOL" != "podman" ]]; then
+        echo "Invalid --container-tool: $CONTAINER_TOOL (must be docker or podman)"
+        exit 1
+      fi
       shift 2
       ;;
     --registry-port)
@@ -29,23 +33,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-CLUSTER_NAME_ARG=""
+CLUSTER_NAME_ARGS=()
 if [ -n "${CLUSTER_NAME}" ]; then
-  CLUSTER_NAME_ARG="--name ${CLUSTER_NAME}"
+  CLUSTER_NAME_ARGS=(--name "${CLUSTER_NAME}")
 fi
 
 # Start a local registry if not already running.
-if [ "$(${CONTAINER_TOOL} inspect -f '{{.State.Running}}' "${REGISTRY_NAME}" 2>/dev/null || true)" != 'true' ]; then
+if [ "$("${CONTAINER_TOOL}" inspect -f '{{.State.Running}}' "${REGISTRY_NAME}" 2>/dev/null || true)" != 'true' ]; then
   echo "Starting local registry on port ${REGISTRY_PORT}..."
-  ${CONTAINER_TOOL} run -d --restart=always -p "127.0.0.1:${REGISTRY_PORT}:5000" --name "${REGISTRY_NAME}" registry:2
+  "${CONTAINER_TOOL}" run -d --restart=always -p "127.0.0.1:${REGISTRY_PORT}:5000" --name "${REGISTRY_NAME}" registry:2
 fi
 
 # Delete existing cluster if it exists.
-kind delete cluster ${CLUSTER_NAME_ARG} 2>/dev/null || true
+kind delete cluster "${CLUSTER_NAME_ARGS[@]}" 2>/dev/null || true
 
 # Create Kind cluster with containerd registry config path enabled.
 echo "Creating Kind cluster..."
-cat <<EOF | kind create cluster ${CLUSTER_NAME_ARG} --config=-
+cat <<EOF | kind create cluster "${CLUSTER_NAME_ARGS[@]}" --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 containerdConfigPatches:
@@ -55,19 +59,19 @@ containerdConfigPatches:
 EOF
 
 # Tell containerd on each node to reach localhost:<port> via HTTP on the registry container.
-NODES=$(kind get nodes ${CLUSTER_NAME_ARG} 2>/dev/null)
+NODES=$(kind get nodes "${CLUSTER_NAME_ARGS[@]}" 2>/dev/null)
 for node in ${NODES}; do
-  ${CONTAINER_TOOL} exec "${node}" mkdir -p "/etc/containerd/certs.d/localhost:${REGISTRY_PORT}"
-  cat <<EOF | ${CONTAINER_TOOL} exec -i "${node}" cp /dev/stdin "/etc/containerd/certs.d/localhost:${REGISTRY_PORT}/hosts.toml"
+  "${CONTAINER_TOOL}" exec "${node}" mkdir -p "/etc/containerd/certs.d/localhost:${REGISTRY_PORT}"
+  cat <<EOF | "${CONTAINER_TOOL}" exec -i "${node}" cp /dev/stdin "/etc/containerd/certs.d/localhost:${REGISTRY_PORT}/hosts.toml"
 [host."http://${REGISTRY_NAME}:5000"]
 EOF
 done
 
 # Connect the registry to the Kind network if not already connected.
 # Kind always uses a single Docker network called "kind" for all clusters.
-if [ "$(${CONTAINER_TOOL} inspect -f='{{json .NetworkSettings.Networks.kind}}' "${REGISTRY_NAME}")" = 'null' ]; then
+if [ "$("${CONTAINER_TOOL}" inspect -f='{{json .NetworkSettings.Networks.kind}}' "${REGISTRY_NAME}")" = 'null' ]; then
   echo "Connecting registry to Kind network..."
-  ${CONTAINER_TOOL} network connect "kind" "${REGISTRY_NAME}"
+  "${CONTAINER_TOOL}" network connect "kind" "${REGISTRY_NAME}"
 fi
 
 # Document the local registry for tooling that understands KEP-1755.

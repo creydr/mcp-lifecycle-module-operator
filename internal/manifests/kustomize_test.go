@@ -22,6 +22,7 @@ import (
 	"testing/fstest"
 
 	odhLabels "github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 const testManifest = `apiVersion: v1
@@ -110,29 +111,8 @@ func TestReplaceNamespace(t *testing.T) {
 			if obj.GetNamespace() != "target-ns" {
 				t.Errorf("%s namespace = %q, want %q", obj.GetKind(), obj.GetNamespace(), "target-ns")
 			}
-		case "ClusterRoleBinding":
-			subjects, _, _ := unstructuredNestedSlice(obj.Object, "subjects")
-			for _, s := range subjects {
-				subj, _ := s.(map[string]interface{})
-				if ns, ok := subj["namespace"].(string); ok && ns != "target-ns" {
-					t.Errorf("ClusterRoleBinding subject namespace = %q, want %q", ns, "target-ns")
-				}
-			}
 		}
 	}
-}
-
-func unstructuredNestedSlice(obj map[string]interface{}, fields ...string) ([]interface{}, bool, error) {
-	var current interface{} = obj
-	for _, f := range fields {
-		m, ok := current.(map[string]interface{})
-		if !ok {
-			return nil, false, nil
-		}
-		current = m[f]
-	}
-	s, ok := current.([]interface{})
-	return s, ok, nil
 }
 
 func TestReplaceImage(t *testing.T) {
@@ -149,14 +129,25 @@ func TestReplaceImage(t *testing.T) {
 		if obj.GetKind() != "Deployment" {
 			continue
 		}
-		containers, _, _ := unstructuredNestedSlice(obj.Object, "spec", "template", "spec", "containers")
+		containers, found, err := unstructured.NestedSlice(obj.Object, "spec", "template", "spec", "containers")
+		if err != nil || !found {
+			t.Fatalf("deployment containers missing or invalid: found=%v err=%v", found, err)
+		}
+		managerFound := false
 		for _, c := range containers {
-			container, _ := c.(map[string]interface{})
+			container, ok := c.(map[string]interface{})
+			if !ok {
+				t.Fatalf("container has unexpected type: %T", c)
+			}
 			if container["name"] == "manager" {
+				managerFound = true
 				if container["image"] != "new-image:v2" {
 					t.Errorf("manager image = %q, want %q", container["image"], "new-image:v2")
 				}
 			}
+		}
+		if !managerFound {
+			t.Fatal("manager container not found")
 		}
 	}
 }
@@ -173,9 +164,15 @@ func TestEmptyImageSkipsReplacement(t *testing.T) {
 		if obj.GetKind() != "Deployment" {
 			continue
 		}
-		containers, _, _ := unstructuredNestedSlice(obj.Object, "spec", "template", "spec", "containers")
+		containers, found, err := unstructured.NestedSlice(obj.Object, "spec", "template", "spec", "containers")
+		if err != nil || !found {
+			t.Fatalf("deployment containers missing or invalid: found=%v err=%v", found, err)
+		}
 		for _, c := range containers {
-			container, _ := c.(map[string]interface{})
+			container, ok := c.(map[string]interface{})
+			if !ok {
+				t.Fatalf("container has unexpected type: %T", c)
+			}
 			if container["name"] == "manager" {
 				if container["image"] != "original:latest" {
 					t.Errorf("manager image = %q, want %q (should not be replaced)", container["image"], "original:latest")

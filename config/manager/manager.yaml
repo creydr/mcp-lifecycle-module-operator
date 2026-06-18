@@ -40,6 +40,7 @@ spec:
           value: "0.0.1"
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop:
             - ALL

@@ -63,8 +63,8 @@ type MCPLifecycleOperatorReconciler struct {
 }
 
 const (
-	platformConfigMapName  = "opendatahub-mcplifecycleoperator-config"
-	deploymentReadyRequeue = 10 * time.Second
+	platformConfigMapName = "opendatahub-mcplifecycleoperator-config"
+	defaultRequeueDelay   = 10 * time.Second
 )
 
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mcplifecycleoperators,verbs=get;list;watch;create;update;patch;delete
@@ -179,6 +179,7 @@ func (r *MCPLifecycleOperatorReconciler) handleRemoved(ctx context.Context, cr *
 	log.Info("ManagementState is Removed, deleting all owned resources")
 	if err := r.deleteAllOwned(ctx, cr); err != nil {
 		log.Error(err, "Failed to delete owned resources, will retry on next reconcile")
+		return ctrl.Result{RequeueAfter: defaultRequeueDelay}, fmt.Errorf("deleting owned resources: %w", err)
 	}
 
 	cm.MarkFalse(string(platformcommon.ConditionTypeReady), "Removed", "MCPLifecycleOperator is in Removed state")
@@ -227,7 +228,7 @@ func (r *MCPLifecycleOperatorReconciler) checkDeploymentsReady(ctx context.Conte
 			cm.MarkFalse(v1alpha1.ConditionMCPLifecycleOperatorAvailable,
 				"DeploymentNotFound", fmt.Sprintf("Operand deployment %s not found: %v", dn.Name, err))
 			cm.AggregateReady()
-			return ctrl.Result{RequeueAfter: deploymentReadyRequeue}, false
+			return ctrl.Result{RequeueAfter: defaultRequeueDelay}, false
 		}
 
 		desiredReplicas := int32(1)
@@ -246,7 +247,7 @@ func (r *MCPLifecycleOperatorReconciler) checkDeploymentsReady(ctx context.Conte
 			}
 			cm.MarkFalse(v1alpha1.ConditionMCPLifecycleOperatorAvailable, "DeploymentNotReady", msg)
 			cm.AggregateReady()
-			return ctrl.Result{RequeueAfter: deploymentReadyRequeue}, false
+			return ctrl.Result{RequeueAfter: defaultRequeueDelay}, false
 		}
 	}
 
@@ -357,7 +358,7 @@ func (r *MCPLifecycleOperatorReconciler) SetupWithManager(mgr ctrl.Manager) erro
 	})
 
 	configMapPredicate := predicate.NewPredicateFuncs(func(obj client.Object) bool {
-		return obj.GetName() == platformConfigMapName
+		return obj.GetNamespace() == r.PodNamespace && obj.GetName() == platformConfigMapName
 	})
 
 	return ctrl.NewControllerManagedBy(mgr).
