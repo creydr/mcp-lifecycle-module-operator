@@ -46,6 +46,17 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+.PHONY: verify
+verify: manifests generate fmt ## Verify generated code and formatting are up-to-date.
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "ERROR: generated files are out of date. Run 'make manifests generate fmt' and commit the result."; \
+		git status --porcelain; \
+		git diff; \
+		exit 1; \
+	else \
+		echo "Generated code and formatting are up-to-date."; \
+	fi
+
 .PHONY: test
 test: manifests generate fmt vet ## Run tests with coverage.
 	go test ./... -coverprofile cover.out
