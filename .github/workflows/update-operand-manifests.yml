@@ -1,0 +1,53 @@
+name: Update Operand Manifests
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or branch of the midstream fork to use"
+        required: false
+        default: "main"
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Update operand manifests
+        run: make update-operand-manifests MCPLO_REF=${{ github.event.inputs.ref || 'main' }}
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet internal/controller/resources/mcp-lifecycle-operator.yaml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore: update operand manifests from midstream"
+          title: "chore: update operand manifests from midstream"
+          body: |
+            Automated update of operand manifests from `${{ github.event.inputs.ref || 'main' }}` branch of the midstream fork.
+          branch: automated/update-operand-manifests
+          delete-branch: true
