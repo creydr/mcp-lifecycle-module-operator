@@ -160,7 +160,8 @@ func (r *MCPLifecycleOperatorReconciler) reconcile(ctx context.Context, cr *v1al
 	}
 
 	if err := r.collectGarbage(ctx, cr, operandNamespace, desired); err != nil {
-		log.Error(err, "Garbage collection encountered errors")
+		log.Error(err, "Garbage collection encountered errors, requeueing")
+		return ctrl.Result{RequeueAfter: defaultRequeueDelay}, nil
 	}
 
 	if result, ready := r.checkDeploymentsReady(ctx, desired, cm); !ready {
@@ -238,11 +239,15 @@ func (r *MCPLifecycleOperatorReconciler) checkDeploymentsReady(ctx context.Conte
 		if operandDeployment.Status.AvailableReplicas < desiredReplicas {
 			msg := fmt.Sprintf("Operand deployment %s has %d/%d available replicas",
 				dn.Name, operandDeployment.Status.AvailableReplicas, desiredReplicas)
+			// Prefer ReplicaFailure over Available as it carries actionable diagnostics.
+			// K8s does not guarantee condition ordering.
 			for _, c := range operandDeployment.Status.Conditions {
-				if c.Type == appsv1.DeploymentAvailable || c.Type == appsv1.DeploymentReplicaFailure {
-					if c.Message != "" {
-						msg = c.Message
-					}
+				if c.Type == appsv1.DeploymentReplicaFailure && c.Message != "" {
+					msg = c.Message
+					break
+				}
+				if c.Type == appsv1.DeploymentAvailable && c.Message != "" {
+					msg = c.Message
 				}
 			}
 			cm.MarkFalse(v1alpha1.ConditionMCPLifecycleOperatorAvailable, "DeploymentNotReady", msg)
@@ -333,8 +338,12 @@ func (r *MCPLifecycleOperatorReconciler) deleteAllOwned(ctx context.Context, cr 
 }
 
 func (r *MCPLifecycleOperatorReconciler) resolveOperandNamespace(ctx context.Context) string {
+	log := logf.FromContext(ctx)
+
 	_, ns, err := r.readPlatformConfig(ctx)
 	if err != nil {
+		log.Info("Platform ConfigMap not available, falling back to default operand namespace",
+			"default", "mcp-lifecycle-operator-system", "error", err)
 		return "mcp-lifecycle-operator-system"
 	}
 	return ns
