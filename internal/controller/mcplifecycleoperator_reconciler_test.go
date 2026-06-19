@@ -48,7 +48,7 @@ var testScheme = func() *runtime.Scheme {
 }()
 
 const (
-	testPodNamespace   = "operator-ns"
+	testPodNamespace    = "operator-ns"
 	testOperatorVersion = "v0.1.0-test"
 )
 
