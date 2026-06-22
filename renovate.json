@@ -20,9 +20,9 @@
     {
       "matchManagers": ["tekton"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "groupName": "all minor dependencies",
+      "groupName": "tekton dependencies",
       "automerge": true,
-      "description": "Group all minor dependencies",
+      "description": "Group all minor tekton dependencies",
       "addLabels": ["jira/valid-reference", "lgtm", "approved"]
     },
     {
@@ -42,6 +42,11 @@
       "matchUpdateTypes": ["patch", "pin", "digest"],
       "groupName": "sigs.k8s.io dependencies",
       "matchPackageNames": ["sigs.k8s.io/{/,}**"]
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["indirect"],
+      "enabled": false
     }
   ],
   "vulnerabilityAlerts": {
