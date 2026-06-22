@@ -4,6 +4,9 @@ IMAGE_TAG ?= latest
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 PLATFORM ?= linux/amd64
 CGO_ENABLED ?= 1
+COMMON_BUILD_ARGS += -trimpath -ldflags="-s -w"
+OUTPUT ?= ./bin/manager
+CLEAN_TARGETS ?= $(OUTPUT)
 
 MCPLO_REPO ?= https://github.com/opendatahub-io/mcp-lifecycle-operator
 MCPLO_REF ?= main
@@ -29,6 +32,9 @@ help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", $$2 }' $(MAKEFILE_LIST)
 
 ##@ Development
+.PHONY: clean
+clean: ## Clean up all build artifacts
+	rm -rf $(CLEAN_TARGETS)
 
 .PHONY: manifests
 manifests: controller-gen ## Generate ClusterRole and CustomResourceDefinition objects.
@@ -80,8 +86,9 @@ e2e-test: ## Run E2E tests (requires a deployed operator on a running cluster).
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+build: clean fmt ## Build manager binary.
+	mkdir -p $(dir $(OUTPUT))
+	CGO_ENABLED=$(CGO_ENABLED) $(GO_BUILD_ENV) go build $(COMMON_BUILD_ARGS) -tags=strictfipsruntime -mod=vendor -a -o $(OUTPUT) cmd/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
