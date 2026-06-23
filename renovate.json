@@ -45,6 +45,11 @@
     },
     {
       "matchManagers": ["gomod"],
+      "groupName": "golang.org/x dependencies",
+      "matchPackageNames": ["golang.org/x/{/,}**"]
+    },
+    {
+      "matchManagers": ["gomod"],
       "matchDepTypes": ["indirect"],
       "enabled": false
     }
