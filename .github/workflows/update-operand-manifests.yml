@@ -8,7 +8,7 @@ on:
         required: false
         default: "main"
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "0 6 * * *"
 
 permissions:
   contents: write
@@ -36,7 +36,7 @@ jobs:
       - name: Check for changes
         id: changes
         run: |
-          if git diff --quiet internal/controller/resources/mcp-lifecycle-operator.yaml; then
+          if git diff --quiet internal/controller/resources/mcp-lifecycle-operator.yaml config/samples/platform-config.yaml; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
