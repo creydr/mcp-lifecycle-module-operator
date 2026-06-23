@@ -4,5 +4,5 @@ metadata:
   name: opendatahub-mcplifecycleoperator-config
   namespace: mcp-lifecycle-module-operator-system
 data:
-  operand-image: "quay.io/redhat-user-workloads/mcp-lifecycle-operator-tenant/mcp-lifecycle-operator-main@sha256:a9d203700dea99c847c7004c691ad4cb6347c07111f2c8045ca7a3ab77566251"
+  operand-image: "quay.io/redhat-user-workloads/mcp-lifecycle-operator-tenant/mcp-lifecycle-operator-main@sha256:63e9ef22b517c110fb0b1f582cc13026d2d4ff8c800064a877b7a91e73b69253"
   operand-namespace: "mcp-lifecycle-operator-system"

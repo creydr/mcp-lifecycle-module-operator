@@ -10,6 +10,7 @@ CLEAN_TARGETS ?= $(OUTPUT)
 
 MCPLO_REPO ?= https://github.com/opendatahub-io/mcp-lifecycle-operator
 MCPLO_REF ?= main
+MCPLO_IMAGE ?= quay.io/redhat-user-workloads/mcp-lifecycle-operator-tenant/mcp-lifecycle-operator-main
 
 CONTAINER_TOOL ?= docker
 
@@ -133,11 +134,16 @@ undeploy: ## Undeploy controller from the K8s cluster.
 ##@ Operand Manifests
 
 .PHONY: update-operand-manifests
-update-operand-manifests: kustomize ## Vendor MCPLO manifests from the midstream fork.
+update-operand-manifests: kustomize update-operand-image ## Vendor MCPLO manifests and update operand image.
 	$(eval TMP := $(shell mktemp -d))
 	git clone --depth 1 --branch "$(MCPLO_REF)" "$(MCPLO_REPO)" "$(TMP)"
 	"$(KUSTOMIZE)" build "$(TMP)/config/default" > internal/controller/resources/mcp-lifecycle-operator.yaml
 	rm -rf "$(TMP)"
+
+.PHONY: update-operand-image
+update-operand-image: skopeo ## Update operand image in config/samples/platform-config.yaml to the latest digest.
+	$(eval DIGEST := $(shell $(SKOPEO) inspect --no-tags --format '{{.Digest}}' docker://$(MCPLO_IMAGE):latest))
+	sed -i 's|operand-image: ".*"|operand-image: "$(MCPLO_IMAGE)@$(DIGEST)"|' config/samples/platform-config.yaml
 
 ##@ Build Dependencies
 
@@ -148,6 +154,7 @@ $(LOCALBIN):
 ## Tool Binaries
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
+SKOPEO ?= $(shell command -v skopeo 2>/dev/null)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.8.1
@@ -162,6 +169,10 @@ $(KUSTOMIZE): $(LOCALBIN)
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
 	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
+
+.PHONY: skopeo
+skopeo: ## Verify skopeo is installed.
+	@if [ -z "$(SKOPEO)" ]; then echo "ERROR: skopeo is not installed. Install it via your package manager (e.g. 'dnf install skopeo')."; exit 1; fi
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
