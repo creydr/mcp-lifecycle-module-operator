@@ -1,5 +1,5 @@
-IMAGE_REGISTRY ?= quay.io/opendatahub
-IMAGE_NAME ?= mcp-lifecycle-module-operator
+IMAGE_REGISTRY ?= quay.io/redhat-user-workloads/mcp-lifecycle-operator-tenant
+IMAGE_NAME ?= mcp-lifecycle-module-operator-main
 IMAGE_TAG ?= latest
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 PLATFORM ?= linux/amd64
@@ -58,10 +58,15 @@ vendor: ## Tidy and vendor Go dependencies.
 	go mod tidy
 	go mod vendor
 
+.PHONY: compiled-manifests
+compiled-manifests: manifests kustomize ## Build compiled deployment manifests into config/manifests/.
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	$(KUSTOMIZE) build config/default > config/manifests/mcp-lifecycle-module-operator.yaml
+
 .PHONY: verify
-verify: manifests generate fmt vendor ## Verify generated code, formatting, and vendored dependencies are up-to-date.
+verify: manifests generate fmt vendor compiled-manifests ## Verify generated code, formatting, and vendored dependencies are up-to-date.
 	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "ERROR: generated files are out of date. Run 'make manifests generate fmt vendor' and commit the result."; \
+		echo "ERROR: generated files are out of date. Run 'make manifests generate fmt vendor compiled-manifests' and commit the result."; \
 		git status --porcelain; \
 		git diff; \
 		exit 1; \
