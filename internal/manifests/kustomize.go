@@ -24,15 +24,15 @@ import (
 	"io/fs"
 
 	"github.com/manifestival/manifestival"
+	v1alpha1 "github.com/opendatahub-io/mcp-lifecycle-module-operator/api/v1alpha1"
 	odhLabels "github.com/opendatahub-io/odh-platform-utilities/pkg/metadata/labels"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
 const (
-	operandYAMLPath  = "resources/mcp-lifecycle-operator.yaml"
-	defaultNamespace = "mcp-lifecycle-operator-system"
-	partOfValue      = "mcplifecycleoperator"
+	operandYAMLPath         = "resources/mcp-lifecycle-operator.yaml"
+	DefaultOperandNamespace = "mcp-lifecycle-operator-system"
 )
 
 // KustomizeProvider loads pre-rendered Kustomize manifests from an embedded
@@ -60,12 +60,12 @@ func (p *KustomizeProvider) Manifests(_ context.Context, params Params) ([]unstr
 
 	targetNS := params.OperandNamespace
 	if targetNS == "" {
-		targetNS = defaultNamespace
+		targetNS = DefaultOperandNamespace
 	}
 
 	manifest, err = manifest.Transform(
 		injectLabels(map[string]string{
-			odhLabels.PlatformPartOf: partOfValue,
+			odhLabels.PlatformPartOf: v1alpha1.MCPLifecycleOperatorServiceName,
 		}),
 		manifestival.InjectNamespace(targetNS),
 		replaceImage(params.OperandImage),
@@ -124,7 +124,7 @@ func replaceImage(newImage string) manifestival.Transformer {
 
 		containers, found, err := unstructured.NestedSlice(u.Object, "spec", "template", "spec", "containers")
 		if err != nil {
-			return err
+			return fmt.Errorf("deployment %q: reading containers: %w", u.GetName(), err)
 		}
 		if !found {
 			return fmt.Errorf("deployment %q is missing spec.template.spec.containers", u.GetName())
