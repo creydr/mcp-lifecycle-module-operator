@@ -52,10 +52,15 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+.PHONY: vendor
+vendor: ## Tidy and vendor Go dependencies.
+	go mod tidy
+	go mod vendor
+
 .PHONY: verify
-verify: manifests generate fmt ## Verify generated code and formatting are up-to-date.
+verify: manifests generate fmt vendor ## Verify generated code, formatting, and vendored dependencies are up-to-date.
 	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "ERROR: generated files are out of date. Run 'make manifests generate fmt' and commit the result."; \
+		echo "ERROR: generated files are out of date. Run 'make manifests generate fmt vendor' and commit the result."; \
 		git status --porcelain; \
 		git diff; \
 		exit 1; \
