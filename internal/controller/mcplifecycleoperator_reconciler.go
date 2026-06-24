@@ -60,11 +60,11 @@ type MCPLifecycleOperatorReconciler struct {
 	ManifestProvider manifests.Provider
 	OperatorVersion  string
 	PodNamespace     string
+	OperandImage     string
 }
 
 const (
-	platformConfigMapName = "opendatahub-mcplifecycleoperator-config"
-	defaultRequeueDelay   = 10 * time.Second
+	defaultRequeueDelay = 10 * time.Second
 )
 
 // +kubebuilder:rbac:groups=components.platform.opendatahub.io,resources=mcplifecycleoperators,verbs=get;list;watch;create;update;patch;delete
@@ -133,17 +133,9 @@ func (r *MCPLifecycleOperatorReconciler) reconcile(ctx context.Context, cr *v1al
 		return r.handleRemoved(ctx, cr, cm)
 	}
 
-	operandImage, operandNamespace, err := r.readPlatformConfig(ctx)
-	if err != nil {
-		cm.MarkFalse(v1alpha1.ConditionMCPLifecycleOperatorAvailable,
-			"ConfigReadFailed", fmt.Sprintf("Platform config not available: %v", err))
-		cm.AggregateReady()
-		return ctrl.Result{}, fmt.Errorf("reading platform config: %w", err)
-	}
-
 	desired, err := r.ManifestProvider.Manifests(ctx, manifests.Params{
-		OperandNamespace: operandNamespace,
-		OperandImage:     operandImage,
+		OperandNamespace: r.PodNamespace,
+		OperandImage:     r.OperandImage,
 	})
 	if err != nil {
 		cm.MarkFalse(v1alpha1.ConditionMCPLifecycleOperatorAvailable,
@@ -159,7 +151,7 @@ func (r *MCPLifecycleOperatorReconciler) reconcile(ctx context.Context, cr *v1al
 		return ctrl.Result{}, fmt.Errorf("applying operand resources: %w", err)
 	}
 
-	if err := r.collectGarbage(ctx, cr, operandNamespace, desired); err != nil {
+	if err := r.collectGarbage(ctx, cr, r.PodNamespace, desired); err != nil {
 		cm.MarkFalse(v1alpha1.ConditionMCPLifecycleOperatorAvailable,
 			"GarbageCollectionFailed", fmt.Sprintf("Failed to collect garbage: %v", err))
 		cm.AggregateReady()
@@ -192,29 +184,6 @@ func (r *MCPLifecycleOperatorReconciler) handleRemoved(ctx context.Context, cr *
 	cm.MarkFalse(string(platformcommon.ConditionTypeDegraded), "NotDegraded", "")
 
 	return ctrl.Result{}, nil
-}
-
-func (r *MCPLifecycleOperatorReconciler) readPlatformConfig(ctx context.Context) (image, namespace string, err error) {
-	configMap := &corev1.ConfigMap{}
-	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: r.PodNamespace,
-		Name:      platformConfigMapName,
-	}, configMap); err != nil {
-		return "", "", err
-	}
-
-	image = configMap.Data["operand-image"]
-	if image == "" {
-		return "", "", fmt.Errorf("key %q is missing or empty in ConfigMap %s/%s",
-			"operand-image", r.PodNamespace, platformConfigMapName)
-	}
-
-	namespace = configMap.Data["operand-namespace"]
-	if namespace == "" {
-		namespace = manifests.DefaultOperandNamespace
-	}
-
-	return image, namespace, nil
 }
 
 func (r *MCPLifecycleOperatorReconciler) applyResources(ctx context.Context, cr *v1alpha1.MCPLifecycleOperator, desired []unstructured.Unstructured) error {
@@ -320,7 +289,7 @@ func (r *MCPLifecycleOperatorReconciler) collectGarbage(ctx context.Context, cr 
 }
 
 func (r *MCPLifecycleOperatorReconciler) deleteAllOwned(ctx context.Context, cr *v1alpha1.MCPLifecycleOperator) error {
-	operandNamespace := r.resolveOperandNamespace(ctx)
+	operandNamespace := r.resolveOperandNamespace()
 
 	collector := gc.New(
 		gc.WithOnlyCollectOwned(false),
@@ -341,16 +310,8 @@ func (r *MCPLifecycleOperatorReconciler) deleteAllOwned(ctx context.Context, cr 
 	})
 }
 
-func (r *MCPLifecycleOperatorReconciler) resolveOperandNamespace(ctx context.Context) string {
-	log := logf.FromContext(ctx)
-
-	_, ns, err := r.readPlatformConfig(ctx)
-	if err != nil {
-		log.Info("Platform ConfigMap not available, falling back to default operand namespace",
-			"default", manifests.DefaultOperandNamespace, "error", err)
-		return manifests.DefaultOperandNamespace
-	}
-	return ns
+func (r *MCPLifecycleOperatorReconciler) resolveOperandNamespace() string {
+	return r.PodNamespace
 }
 
 func (r *MCPLifecycleOperatorReconciler) patchStatus(ctx context.Context, orig, updated *v1alpha1.MCPLifecycleOperator) error {
@@ -370,13 +331,8 @@ func (r *MCPLifecycleOperatorReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		return obj.GetLabels()[odhLabels.PlatformPartOf] == v1alpha1.MCPLifecycleOperatorServiceName
 	})
 
-	configMapPredicate := predicate.NewPredicateFuncs(func(obj client.Object) bool {
-		return obj.GetNamespace() == r.PodNamespace && obj.GetName() == platformConfigMapName
-	})
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.MCPLifecycleOperator{}).
-		Watches(&corev1.ConfigMap{}, toSingleton, builder.WithPredicates(configMapPredicate)).
 		Watches(&appsv1.Deployment{}, toSingleton, builder.WithPredicates(managedPredicate)).
 		Watches(&corev1.ServiceAccount{}, toSingleton, builder.WithPredicates(managedPredicate)).
 		Watches(&corev1.Service{}, toSingleton, builder.WithPredicates(managedPredicate)).

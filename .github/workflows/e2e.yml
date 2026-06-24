@@ -52,6 +52,6 @@ jobs:
           kubectl get mcplifecycleoperators.components.platform.opendatahub.io \
             default -o yaml || true
           echo "=== Operand namespace resources ==="
-          kubectl get all -n mcp-lifecycle-operator-system || true
+          kubectl get all -n mcp-lifecycle-module-operator-system || true
           echo "=== Events ==="
           kubectl get events -A --sort-by=.lastTimestamp | tail -50 || true

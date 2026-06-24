@@ -10,7 +10,6 @@ CLEAN_TARGETS ?= $(OUTPUT)
 
 MCPLO_REPO ?= https://github.com/opendatahub-io/mcp-lifecycle-operator
 MCPLO_REF ?= main
-MCPLO_IMAGE ?= quay.io/redhat-user-workloads/mcp-lifecycle-operator-tenant/mcp-lifecycle-operator-main
 
 CONTAINER_TOOL ?= docker
 
@@ -61,7 +60,7 @@ vendor: ## Tidy and vendor Go dependencies.
 .PHONY: compiled-manifests
 compiled-manifests: manifests kustomize ## Build compiled deployment manifests into config/manifests/.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/deploy > config/manifests/mcp-lifecycle-module-operator.yaml
+	$(KUSTOMIZE) build config/default > config/manifests/mcp-lifecycle-module-operator.yaml
 
 .PHONY: verify
 verify: manifests generate fmt vendor compiled-manifests ## Verify generated code, formatting, and vendored dependencies are up-to-date.
@@ -92,7 +91,7 @@ kind-delete: ## Delete the Kind cluster.
 
 .PHONY: e2e-test
 e2e-test: ## Run E2E tests (requires a deployed operator on a running cluster).
-	go test ./test/e2e/ -v -timeout 15m
+	go test -count=1 ./test/e2e/ -v -timeout 15m
 
 ##@ Build
 
@@ -130,26 +129,21 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster.
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/deploy | kubectl apply -f -
+	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster.
-	$(KUSTOMIZE) build config/deploy | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
+	$(KUSTOMIZE) build config/default | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Operand Manifests
 
 .PHONY: update-operand-manifests
-update-operand-manifests: kustomize update-operand-image ## Vendor MCPLO manifests and update operand image.
+update-operand-manifests: ## Vendor MCPLO manifests.
 	$(eval TMP := $(shell mktemp -d))
 	git clone --depth 1 --branch "$(MCPLO_REF)" "$(MCPLO_REPO)" "$(TMP)"
-	"$(KUSTOMIZE)" build "$(TMP)/config/default" > internal/controller/resources/mcp-lifecycle-operator.yaml
+	$(MAKE) -C "$(TMP)" -f Makefile-ocp.mk build-installer
+	cp "$(TMP)/dist/install.yaml" internal/controller/resources/mcp-lifecycle-operator.yaml
 	rm -rf "$(TMP)"
-
-.PHONY: update-operand-image
-update-operand-image: skopeo ## Update operand image to the latest digest.
-	$(eval DIGEST := $(shell $(SKOPEO) inspect --no-tags --format '{{.Digest}}' docker://$(MCPLO_IMAGE):latest))
-	sed -i 's|operand-image: ".*"|operand-image: "$(MCPLO_IMAGE)@$(DIGEST)"|' config/deploy/platform-config.yaml
-	$(MAKE) compiled-manifests
 
 ##@ Build Dependencies
 
@@ -160,8 +154,6 @@ $(LOCALBIN):
 ## Tool Binaries
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
-SKOPEO ?= $(shell command -v skopeo 2>/dev/null)
-
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.21.0
@@ -175,10 +167,6 @@ $(KUSTOMIZE): $(LOCALBIN)
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
 	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
-
-.PHONY: skopeo
-skopeo: ## Verify skopeo is installed.
-	@if [ -z "$(SKOPEO)" ]; then echo "ERROR: skopeo is not installed. Install it via your package manager (e.g. 'dnf install skopeo')."; exit 1; fi
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

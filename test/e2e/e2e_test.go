@@ -40,7 +40,7 @@ var (
 )
 
 const (
-	operandNamespace  = "mcp-lifecycle-operator-system"
+	operandNamespace  = "mcp-lifecycle-module-operator-system"
 	operandDeployment = "mcp-lifecycle-operator-controller-manager"
 	operandCRD        = "mcpservers.mcp.x-k8s.io"
 

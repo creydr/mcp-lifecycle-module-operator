@@ -93,15 +93,20 @@ func main() {
 
 	manifestProvider := manifests.NewKustomizeProvider(controller.ResourcesFS)
 
-	podNamespace := os.Getenv("POD_NAMESPACE")
+	podNamespace := os.Getenv("SYSTEM_NAMESPACE")
 	if podNamespace == "" {
-		log.Error(nil, "missing required environment variable", "name", "POD_NAMESPACE")
+		log.Error(nil, "missing required environment variable", "name", "SYSTEM_NAMESPACE")
 		os.Exit(1)
 	}
 	operatorVersion := os.Getenv("OPERATOR_VERSION")
 	if operatorVersion == "" {
 		log.Error(nil, "missing required environment variable", "name", "OPERATOR_VERSION")
 		os.Exit(1)
+	}
+
+	operandImage := os.Getenv("RELATED_IMAGE_ODH_MCP_LIFECYCLE_OPERATOR_IMAGE")
+	if operandImage == "" {
+		log.Info("RELATED_IMAGE_ODH_MCP_LIFECYCLE_OPERATOR_IMAGE not set, using default image from manifests")
 	}
 
 	reconciler := &controller.MCPLifecycleOperatorReconciler{
@@ -113,6 +118,7 @@ func main() {
 		ManifestProvider: manifestProvider,
 		OperatorVersion:  operatorVersion,
 		PodNamespace:     podNamespace,
+		OperandImage:     operandImage,
 	}
 
 	if err := reconciler.SetupWithManager(mgr); err != nil {

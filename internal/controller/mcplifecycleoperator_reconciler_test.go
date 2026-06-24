@@ -50,6 +50,7 @@ var testScheme = func() *runtime.Scheme {
 const (
 	testPodNamespace    = "operator-ns"
 	testOperatorVersion = "v0.1.0-test"
+	testOperandImage    = "registry.io/image:v1"
 )
 
 // --- Fake manifest provider ---
@@ -63,15 +64,26 @@ func (f *fakeManifestProvider) Manifests(_ context.Context, _ manifests.Params) 
 	return f.resources, f.err
 }
 
+type capturingManifestProvider struct {
+	delegate manifests.Provider
+	capture  func(manifests.Params)
+}
+
+func (c *capturingManifestProvider) Manifests(ctx context.Context, params manifests.Params) ([]unstructured.Unstructured, error) {
+	c.capture(params)
+	return c.delegate.Manifests(ctx, params)
+}
+
 // --- Test helpers ---
 
-func newTestReconciler(cli client.Client, provider manifests.Provider) *MCPLifecycleOperatorReconciler {
+func newTestReconciler(cli client.Client, provider manifests.Provider, operandImage string) *MCPLifecycleOperatorReconciler {
 	return &MCPLifecycleOperatorReconciler{
 		Client:           cli,
 		Scheme:           testScheme,
 		ManifestProvider: provider,
 		OperatorVersion:  testOperatorVersion,
 		PodNamespace:     testPodNamespace,
+		OperandImage:     operandImage,
 	}
 }
 
@@ -86,23 +98,6 @@ func newTestCR() *v1alpha1.MCPLifecycleOperator {
 				ManagementState: platformcommon.Managed,
 			},
 		},
-	}
-}
-
-func newPlatformConfigMap(image, operandNS string) *corev1.ConfigMap {
-	data := map[string]string{}
-	if image != "" {
-		data["operand-image"] = image
-	}
-	if operandNS != "" {
-		data["operand-namespace"] = operandNS
-	}
-	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      platformConfigMapName,
-			Namespace: testPodNamespace,
-		},
-		Data: data,
 	}
 }
 
@@ -125,7 +120,7 @@ func newDeploymentUnstructured(name, namespace string) unstructured.Unstructured
 
 func int32Ptr(i int32) *int32 { return &i }
 
-// --- findDeploymentNames tests (existing) ---
+// --- findDeploymentNames tests ---
 
 func TestFindDeploymentNames(t *testing.T) {
 	resources := []unstructured.Unstructured{
@@ -187,7 +182,7 @@ func TestFindDeploymentNamesEmpty(t *testing.T) {
 
 func TestReconcile_CRNotFound(t *testing.T) {
 	cli := fake.NewClientBuilder().WithScheme(testScheme).Build()
-	r := newTestReconciler(cli, &fakeManifestProvider{})
+	r := newTestReconciler(cli, &fakeManifestProvider{}, testOperandImage)
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "default"},
@@ -200,7 +195,7 @@ func TestReconcile_CRNotFound(t *testing.T) {
 	}
 }
 
-func TestReconcile_ConfigMapMissing(t *testing.T) {
+func TestReconcile_ManifestProviderError(t *testing.T) {
 	cr := newTestCR()
 	cli := fake.NewClientBuilder().
 		WithScheme(testScheme).
@@ -208,75 +203,8 @@ func TestReconcile_ConfigMapMissing(t *testing.T) {
 		WithStatusSubresource(cr).
 		Build()
 
-	r := newTestReconciler(cli, &fakeManifestProvider{})
-
-	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: v1alpha1.MCPLifecycleOperatorInstanceName},
-	})
-	if err == nil {
-		t.Fatal("expected error for missing ConfigMap, got nil")
-	}
-
-	updated := &v1alpha1.MCPLifecycleOperator{}
-	if getErr := cli.Get(context.Background(), types.NamespacedName{Name: v1alpha1.MCPLifecycleOperatorInstanceName}, updated); getErr != nil {
-		t.Fatalf("failed to get updated CR: %v", getErr)
-	}
-
-	c := findCondition(updated, v1alpha1.ConditionMCPLifecycleOperatorAvailable)
-	if c == nil {
-		t.Fatal("expected MCPLifecycleOperatorAvailable condition, found none")
-	}
-	if c.Status != metav1.ConditionFalse {
-		t.Errorf("condition status = %v, want False", c.Status)
-	}
-	if c.Reason != "ConfigReadFailed" {
-		t.Errorf("condition reason = %q, want %q", c.Reason, "ConfigReadFailed")
-	}
-}
-
-func TestReconcile_ConfigMapEmptyImage(t *testing.T) {
-	cr := newTestCR()
-	cm := newPlatformConfigMap("", "some-ns")
-	cli := fake.NewClientBuilder().
-		WithScheme(testScheme).
-		WithObjects(cr, cm).
-		WithStatusSubresource(cr).
-		Build()
-
-	r := newTestReconciler(cli, &fakeManifestProvider{})
-
-	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: v1alpha1.MCPLifecycleOperatorInstanceName},
-	})
-	if err == nil {
-		t.Fatal("expected error for empty operand-image, got nil")
-	}
-
-	updated := &v1alpha1.MCPLifecycleOperator{}
-	if getErr := cli.Get(context.Background(), types.NamespacedName{Name: v1alpha1.MCPLifecycleOperatorInstanceName}, updated); getErr != nil {
-		t.Fatalf("failed to get updated CR: %v", getErr)
-	}
-
-	c := findCondition(updated, v1alpha1.ConditionMCPLifecycleOperatorAvailable)
-	if c == nil {
-		t.Fatal("expected MCPLifecycleOperatorAvailable condition, found none")
-	}
-	if c.Status != metav1.ConditionFalse {
-		t.Errorf("condition status = %v, want False", c.Status)
-	}
-}
-
-func TestReconcile_ManifestProviderError(t *testing.T) {
-	cr := newTestCR()
-	cm := newPlatformConfigMap("registry.io/image:v1", "target-ns")
-	cli := fake.NewClientBuilder().
-		WithScheme(testScheme).
-		WithObjects(cr, cm).
-		WithStatusSubresource(cr).
-		Build()
-
 	provider := &fakeManifestProvider{err: fmt.Errorf("render failed")}
-	r := newTestReconciler(cli, provider)
+	r := newTestReconciler(cli, provider, testOperandImage)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: v1alpha1.MCPLifecycleOperatorInstanceName},
@@ -302,47 +230,32 @@ func TestReconcile_ManifestProviderError(t *testing.T) {
 	}
 }
 
-// --- readPlatformConfig tests ---
+func TestReconcile_EmptyOperandImage_PassesEmptyToProvider(t *testing.T) {
+	cr := newTestCR()
 
-func TestReadPlatformConfig_NamespaceDefault(t *testing.T) {
-	cm := newPlatformConfigMap("registry.io/image:v1", "")
+	var capturedParams manifests.Params
+	provider := &capturingManifestProvider{
+		delegate: &fakeManifestProvider{err: fmt.Errorf("stop after capture")},
+		capture:  func(p manifests.Params) { capturedParams = p },
+	}
+
 	cli := fake.NewClientBuilder().
 		WithScheme(testScheme).
-		WithObjects(cm).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
 		Build()
 
-	r := newTestReconciler(cli, nil)
+	r := newTestReconciler(cli, provider, "")
 
-	image, ns, err := r.readPlatformConfig(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if image != "registry.io/image:v1" {
-		t.Errorf("image = %q, want %q", image, "registry.io/image:v1")
-	}
-	if ns != "mcp-lifecycle-operator-system" {
-		t.Errorf("namespace = %q, want %q", ns, "mcp-lifecycle-operator-system")
-	}
-}
+	_, _ = r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: v1alpha1.MCPLifecycleOperatorInstanceName},
+	})
 
-func TestReadPlatformConfig_CustomNamespace(t *testing.T) {
-	cm := newPlatformConfigMap("registry.io/image:v1", "custom-ns")
-	cli := fake.NewClientBuilder().
-		WithScheme(testScheme).
-		WithObjects(cm).
-		Build()
-
-	r := newTestReconciler(cli, nil)
-
-	image, ns, err := r.readPlatformConfig(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if capturedParams.OperandImage != "" {
+		t.Errorf("OperandImage = %q, want empty string", capturedParams.OperandImage)
 	}
-	if image != "registry.io/image:v1" {
-		t.Errorf("image = %q, want %q", image, "registry.io/image:v1")
-	}
-	if ns != "custom-ns" {
-		t.Errorf("namespace = %q, want %q", ns, "custom-ns")
+	if capturedParams.OperandNamespace != testPodNamespace {
+		t.Errorf("OperandNamespace = %q, want %q", capturedParams.OperandNamespace, testPodNamespace)
 	}
 }
 
@@ -361,7 +274,7 @@ func TestCheckDeploymentsReady_AllAvailable(t *testing.T) {
 
 	cr := newTestCR()
 	cm := v1alpha1.NewConditionsManager(cr, cr.Generation)
-	r := newTestReconciler(cli, nil)
+	r := newTestReconciler(cli, nil, testOperandImage)
 
 	desired := []unstructured.Unstructured{
 		newDeploymentUnstructured("controller-manager", "target-ns"),
@@ -389,7 +302,7 @@ func TestCheckDeploymentsReady_NotEnoughReplicas(t *testing.T) {
 
 	cr := newTestCR()
 	cm := v1alpha1.NewConditionsManager(cr, cr.Generation)
-	r := newTestReconciler(cli, nil)
+	r := newTestReconciler(cli, nil, testOperandImage)
 
 	desired := []unstructured.Unstructured{
 		newDeploymentUnstructured("controller-manager", "target-ns"),
@@ -419,7 +332,7 @@ func TestCheckDeploymentsReady_DeploymentNotFound(t *testing.T) {
 
 	cr := newTestCR()
 	cm := v1alpha1.NewConditionsManager(cr, cr.Generation)
-	r := newTestReconciler(cli, nil)
+	r := newTestReconciler(cli, nil, testOperandImage)
 
 	desired := []unstructured.Unstructured{
 		newDeploymentUnstructured("missing-deployment", "target-ns"),
@@ -462,7 +375,7 @@ func TestCheckDeploymentsReady_ReplicaFailureCondition(t *testing.T) {
 
 	cr := newTestCR()
 	cm := v1alpha1.NewConditionsManager(cr, cr.Generation)
-	r := newTestReconciler(cli, nil)
+	r := newTestReconciler(cli, nil, testOperandImage)
 
 	desired := []unstructured.Unstructured{
 		newDeploymentUnstructured("controller-manager", "target-ns"),
@@ -500,7 +413,7 @@ func TestCheckDeploymentsReady_MultipleDeployments(t *testing.T) {
 
 	cr := newTestCR()
 	cm := v1alpha1.NewConditionsManager(cr, cr.Generation)
-	r := newTestReconciler(cli, nil)
+	r := newTestReconciler(cli, nil, testOperandImage)
 
 	desired := []unstructured.Unstructured{
 		newDeploymentUnstructured("manager", "target-ns"),
@@ -526,7 +439,7 @@ func TestCheckDeploymentsReady_MultipleDeployments(t *testing.T) {
 
 // --- Full reconcile with condition aggregation ---
 
-func TestReconcile_ConditionAggregation_OnConfigError(t *testing.T) {
+func TestReconcile_ConditionAggregation_OnManifestError(t *testing.T) {
 	cr := newTestCR()
 	cli := fake.NewClientBuilder().
 		WithScheme(testScheme).
@@ -534,7 +447,7 @@ func TestReconcile_ConditionAggregation_OnConfigError(t *testing.T) {
 		WithStatusSubresource(cr).
 		Build()
 
-	r := newTestReconciler(cli, &fakeManifestProvider{})
+	r := newTestReconciler(cli, &fakeManifestProvider{err: fmt.Errorf("render failed")}, testOperandImage)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: v1alpha1.MCPLifecycleOperatorInstanceName},
@@ -589,7 +502,7 @@ func TestCheckDeploymentsReady_NilReplicas(t *testing.T) {
 
 	cr := newTestCR()
 	cm := v1alpha1.NewConditionsManager(cr, cr.Generation)
-	r := newTestReconciler(cli, nil)
+	r := newTestReconciler(cli, nil, testOperandImage)
 
 	desired := []unstructured.Unstructured{
 		newDeploymentUnstructured("controller-manager", "target-ns"),
@@ -603,20 +516,19 @@ func TestCheckDeploymentsReady_NilReplicas(t *testing.T) {
 
 func TestReconcile_StatusPatch_SetsReleaseInfo(t *testing.T) {
 	cr := newTestCR()
-	cm := newPlatformConfigMap("", "ns")
 	cli := fake.NewClientBuilder().
 		WithScheme(testScheme).
-		WithObjects(cr, cm).
+		WithObjects(cr).
 		WithStatusSubresource(cr).
 		Build()
 
-	r := newTestReconciler(cli, &fakeManifestProvider{})
+	r := newTestReconciler(cli, &fakeManifestProvider{err: fmt.Errorf("render failed")}, testOperandImage)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: v1alpha1.MCPLifecycleOperatorInstanceName},
 	})
 	if err == nil {
-		t.Fatal("expected error for empty operand-image config, got nil")
+		t.Fatal("expected error for manifest render failure, got nil")
 	}
 
 	updated := &v1alpha1.MCPLifecycleOperator{}
@@ -655,7 +567,7 @@ func TestCheckDeploymentsReady_AvailableConditionFallback(t *testing.T) {
 
 	cr := newTestCR()
 	cm := v1alpha1.NewConditionsManager(cr, cr.Generation)
-	r := newTestReconciler(cli, nil)
+	r := newTestReconciler(cli, nil, testOperandImage)
 
 	desired := []unstructured.Unstructured{
 		newDeploymentUnstructured("controller-manager", "target-ns"),
