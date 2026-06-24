@@ -138,10 +138,11 @@ undeploy: kustomize ## Undeploy controller from the K8s cluster.
 ##@ Operand Manifests
 
 .PHONY: update-operand-manifests
-update-operand-manifests: kustomize ## Vendor MCPLO manifests.
+update-operand-manifests: ## Vendor MCPLO manifests.
 	$(eval TMP := $(shell mktemp -d))
 	git clone --depth 1 --branch "$(MCPLO_REF)" "$(MCPLO_REPO)" "$(TMP)"
-	"$(KUSTOMIZE)" build "$(TMP)/config/default" > internal/controller/resources/mcp-lifecycle-operator.yaml
+	$(MAKE) -C "$(TMP)" -f Makefile-ocp.mk build-installer
+	cp "$(TMP)/dist/install.yaml" internal/controller/resources/mcp-lifecycle-operator.yaml
 	rm -rf "$(TMP)"
 
 ##@ Build Dependencies
