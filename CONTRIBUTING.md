@@ -56,11 +56,8 @@ make kind-create
 # Build and push to the local registry
 make docker-build docker-push IMAGE_REGISTRY=localhost:5001 IMAGE_TAG=dev
 
-# Deploy
+# Deploy (includes the platform ConfigMap with default operand image)
 make deploy IMAGE_REGISTRY=localhost:5001 IMAGE_TAG=dev
-
-# Apply the sample platform ConfigMap
-kubectl apply -f config/samples/platform-config.yaml
 
 # Apply the sample CR
 kubectl apply -f config/samples/mcplifecycleoperator.yaml
