@@ -91,7 +91,7 @@ kind-delete: ## Delete the Kind cluster.
 
 .PHONY: e2e-test
 e2e-test: ## Run E2E tests (requires a deployed operator on a running cluster).
-	go test ./test/e2e/ -v -timeout 15m
+	go test -count=1 ./test/e2e/ -v -timeout 15m
 
 ##@ Build
 
