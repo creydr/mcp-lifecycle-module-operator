@@ -61,7 +61,7 @@ vendor: ## Tidy and vendor Go dependencies.
 .PHONY: compiled-manifests
 compiled-manifests: manifests kustomize ## Build compiled deployment manifests into config/manifests/.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/default > config/manifests/mcp-lifecycle-module-operator.yaml
+	$(KUSTOMIZE) build config/deploy > config/manifests/mcp-lifecycle-module-operator.yaml
 
 .PHONY: verify
 verify: manifests generate fmt vendor compiled-manifests ## Verify generated code, formatting, and vendored dependencies are up-to-date.
@@ -130,11 +130,11 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster.
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | kubectl apply -f -
+	$(KUSTOMIZE) build config/deploy | kubectl apply -f -
 
 .PHONY: undeploy
-undeploy: ## Undeploy controller from the K8s cluster.
-	$(KUSTOMIZE) build config/default | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
+undeploy: kustomize ## Undeploy controller from the K8s cluster.
+	$(KUSTOMIZE) build config/deploy | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Operand Manifests
 
@@ -146,9 +146,10 @@ update-operand-manifests: kustomize update-operand-image ## Vendor MCPLO manifes
 	rm -rf "$(TMP)"
 
 .PHONY: update-operand-image
-update-operand-image: skopeo ## Update operand image in config/samples/platform-config.yaml to the latest digest.
+update-operand-image: skopeo ## Update operand image to the latest digest.
 	$(eval DIGEST := $(shell $(SKOPEO) inspect --no-tags --format '{{.Digest}}' docker://$(MCPLO_IMAGE):latest))
-	sed -i 's|operand-image: ".*"|operand-image: "$(MCPLO_IMAGE)@$(DIGEST)"|' config/samples/platform-config.yaml
+	sed -i 's|operand-image: ".*"|operand-image: "$(MCPLO_IMAGE)@$(DIGEST)"|' config/deploy/platform-config.yaml
+	$(MAKE) compiled-manifests
 
 ##@ Build Dependencies
 

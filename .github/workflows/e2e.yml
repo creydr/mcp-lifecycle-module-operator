@@ -33,9 +33,6 @@ jobs:
       - name: Deploy the operator
         run: make deploy IMAGE_REGISTRY=localhost:5001 IMAGE_TAG=e2e
 
-      - name: Apply platform ConfigMap
-        run: kubectl apply -f config/samples/platform-config.yaml -n mcp-lifecycle-module-operator-system
-
       - name: Wait for module operator to be ready
         run: |
           kubectl rollout status deployment/mcp-lifecycle-module-operator-controller-manager \

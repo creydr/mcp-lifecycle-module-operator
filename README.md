@@ -64,24 +64,26 @@ make deploy
 make deploy IMG=quay.io/myrepo/mcp-lifecycle-module-operator:v0.1.0
 ```
 
-### Create the platform ConfigMap
+### Platform ConfigMap
 
-The platform ConfigMap tells the module operator which operand image to deploy and where:
+`make deploy` includes a platform ConfigMap with sensible defaults. In a full ODH deployment, this ConfigMap is managed by the platform operator automatically.
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: opendatahub-mcplifecycleoperator-config
-  namespace: mcp-lifecycle-module-operator-system
-data:
-  operand-image: "quay.io/redhat-user-workloads/mcp-lifecycle-operator-tenant/mcp-lifecycle-operator-main@sha256:..."
-  operand-namespace: "mcp-lifecycle-operator-system"
+The ConfigMap `opendatahub-mcplifecycleoperator-config` lives in the operator namespace and controls how the operand is deployed:
+
+| Key | Description | Default |
+|---|---|---|
+| `operand-image` | Full image reference (with digest) for the MCP Lifecycle Operator | Latest upstream image |
+| `operand-namespace` | Namespace where the operand is deployed | `mcp-lifecycle-operator-system` |
+
+To customize, edit [`config/deploy/platform-config.yaml`](config/deploy/platform-config.yaml) before deploying, or patch the ConfigMap directly:
+
+```bash
+kubectl patch configmap opendatahub-mcplifecycleoperator-config \
+  -n mcp-lifecycle-module-operator-system \
+  --type merge -p '{"data":{"operand-namespace":"custom-ns"}}'
 ```
 
-A sample is provided at `config/samples/platform-config.yaml`.
-
-> In a full ODH deployment, this ConfigMap is created and managed by the platform operator automatically.
+The operator watches this ConfigMap and re-reconciles automatically when it changes.
 
 ### Create the MCPLifecycleOperator CR
 
