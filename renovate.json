@@ -19,7 +19,7 @@
   "packageRules": [
     {
       "matchManagers": ["tekton"],
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "matchUpdateTypes": ["minor", "patch"],
       "groupName": "tekton dependencies",
       "automerge": true,
       "description": "Group all minor tekton dependencies",
@@ -33,13 +33,13 @@
     },
     {
       "matchManagers": ["gomod"],
-      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "matchUpdateTypes": ["patch"],
       "groupName": "k8s.io dependencies",
       "matchPackageNames": ["k8s.io/{/,}**"]
     },
     {
       "matchManagers": ["gomod"],
-      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "matchUpdateTypes": ["patch"],
       "groupName": "sigs.k8s.io dependencies",
       "matchPackageNames": ["sigs.k8s.io/{/,}**"]
     },
@@ -56,5 +56,11 @@
   ],
   "vulnerabilityAlerts": {
     "enabled": true
+  },
+  "digest": {
+    "enabled": false
+  },
+  "pin": {
+    "enabled": false
   }
 }
