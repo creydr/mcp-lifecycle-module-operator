@@ -16,6 +16,14 @@
     "gomodUpdateImportPaths",
     "gomodVendor"
   ],
+  "gomod": {
+    "packageRules": [
+      {
+        "matchDepTypes": ["indirect"],
+        "enabled": false
+      }
+    ]
+  },
   "packageRules": [
     {
       "matchManagers": ["tekton"],
@@ -47,11 +55,6 @@
       "matchManagers": ["gomod"],
       "groupName": "golang.org/x dependencies",
       "matchPackageNames": ["golang.org/x/{/,}**"]
-    },
-    {
-      "matchManagers": ["gomod"],
-      "matchDepTypes": ["indirect"],
-      "enabled": false
     }
   ],
   "vulnerabilityAlerts": {
