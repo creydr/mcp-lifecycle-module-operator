@@ -106,7 +106,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build --platform $(PLATFORM) --build-arg CGO_ENABLED=$(CGO_ENABLED) -f Dockerfile -t ${IMG} .
+	$(CONTAINER_TOOL) build --platform $(PLATFORM) --build-arg CGO_ENABLED=$(CGO_ENABLED) -f Dockerfile.konflux -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
