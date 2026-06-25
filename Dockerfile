@@ -1,13 +1,7 @@
 # -----------------------------------------------------------------------------
-# Build arguments
-# -----------------------------------------------------------------------------
-ARG BUILDER_IMAGE=registry.access.redhat.com/ubi9/go-toolset:latest
-ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest
-
-# -----------------------------------------------------------------------------
 # Builder stage
 # -----------------------------------------------------------------------------
-FROM ${BUILDER_IMAGE} AS builder
+FROM registry.redhat.io/ubi9/go-toolset@sha256:17c888d75753f128f6cbdc5587932c3abd2632ca8e0931aa27b9a60c7a75ac62 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -28,7 +22,7 @@ RUN make build GO_BUILD_ENV="GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH}"
 # -----------------------------------------------------------------------------
 # Runtime stage
 # -----------------------------------------------------------------------------
-FROM --platform=$TARGETPLATFORM ${BASE_IMAGE}
+FROM --platform=$TARGETPLATFORM registry.redhat.io/ubi9/ubi-minimal@sha256:44bc70ef6e6ea9a70e353be97f4722e10358d09fbb9494ca943b2a641049690e
 
 WORKDIR /
 
@@ -57,7 +51,6 @@ LABEL url="https://github.com/opendatahub-io/mcp-lifecycle-module-operator"
 LABEL vendor="Red Hat, Inc."
 LABEL version=0.1.0
 LABEL summary="MCP lifecycle module operator"
-LABEL konflux.additional-tags="latest"
 
 # -----------------------------------------------------------------------------
 # Entrypoint
