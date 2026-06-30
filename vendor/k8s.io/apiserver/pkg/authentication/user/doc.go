@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,23 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package manifests
-
-import (
-	"context"
-
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-)
-
-// Params holds the dynamic values used to patch vendored operand manifests.
-type Params struct {
-	OperandNamespace string
-	OperandImage     string
-	TLSMinVersion    string
-	TLSCipherSuites  string
-}
-
-// Provider abstracts how operand manifests are obtained and transformed.
-type Provider interface {
-	Manifests(ctx context.Context, params Params) ([]unstructured.Unstructured, error)
-}
+// Package user contains utilities for dealing with simple user exchange in the auth
+// packages. The user.Info interface defines an interface for exchanging that info.
+package user
