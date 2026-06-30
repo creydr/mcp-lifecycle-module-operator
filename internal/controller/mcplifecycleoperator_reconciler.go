@@ -334,8 +334,6 @@ func (r *MCPLifecycleOperatorReconciler) patchStatus(ctx context.Context, orig, 
 
 // SetupWithManager registers the controller with the manager.
 func (r *MCPLifecycleOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	log := ctrl.Log.WithName("setup")
-
 	enqueueComponentCR := handler.EnqueueRequestsFromMapFunc(func(_ context.Context, _ client.Object) []reconcile.Request {
 		return []reconcile.Request{
 			{NamespacedName: types.NamespacedName{Name: v1alpha1.MCPLifecycleOperatorInstanceName}},
@@ -355,12 +353,8 @@ func (r *MCPLifecycleOperatorReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		Watches(&rbacv1.ClusterRoleBinding{}, enqueueComponentCR, builder.WithPredicates(managedPredicate)).
 		Watches(&rbacv1.Role{}, enqueueComponentCR, builder.WithPredicates(managedPredicate)).
 		Watches(&rbacv1.RoleBinding{}, enqueueComponentCR, builder.WithPredicates(managedPredicate)).
-		Watches(&extv1.CustomResourceDefinition{}, enqueueComponentCR, builder.WithPredicates(managedPredicate))
-
-	if isOpenShiftCluster(mgr) {
-		log.Info("OpenShift cluster detected, watching APIServer for TLS profile changes")
-		b = b.Watches(&configv1.APIServer{}, enqueueComponentCR)
-	}
+		Watches(&extv1.CustomResourceDefinition{}, enqueueComponentCR, builder.WithPredicates(managedPredicate)).
+		Watches(&configv1.APIServer{}, enqueueComponentCR)
 
 	return b.Complete(r)
 }

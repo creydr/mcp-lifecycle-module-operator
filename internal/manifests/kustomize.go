@@ -136,6 +136,7 @@ func injectTLSEnvVars(minVersion, cipherSuites string) manifestival.Transformer 
 			return nil
 		}
 
+		injected := false
 		for i, c := range containers {
 			container, ok := c.(map[string]interface{})
 			if !ok {
@@ -153,11 +154,14 @@ func injectTLSEnvVars(minVersion, cipherSuites string) manifestival.Transformer 
 				return fmt.Errorf("deployment %q: setting TLS env vars: %w", u.GetName(), err)
 			}
 			containers[i] = container
-
-			return unstructured.SetNestedSlice(u.Object, containers, "spec", "template", "spec", "containers")
+			injected = true
 		}
 
-		return nil
+		if !injected {
+			return fmt.Errorf("deployment %q has no container named %q to inject TLS env vars", u.GetName(), "manager")
+		}
+
+		return unstructured.SetNestedSlice(u.Object, containers, "spec", "template", "spec", "containers")
 	}
 }
 

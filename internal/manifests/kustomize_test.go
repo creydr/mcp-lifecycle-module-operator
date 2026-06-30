@@ -298,6 +298,30 @@ func TestInjectTLSEnvVars_EmptyValues_SkipsInjection(t *testing.T) {
 	}
 }
 
+func TestInjectTLSEnvVars_NoManagerContainer_ReturnsError(t *testing.T) {
+	manifest := `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: mcp-lifecycle-operator-system
+spec:
+  template:
+    spec:
+      containers:
+      - name: sidecar
+        image: sidecar:latest
+`
+	provider := NewKustomizeProvider(newTestFS(manifest))
+
+	_, err := provider.Manifests(context.Background(), Params{
+		TLSMinVersion:   "VersionTLS12",
+		TLSCipherSuites: "TLS_AES_128_GCM_SHA256",
+	})
+	if err == nil {
+		t.Fatal("expected error when no manager container exists")
+	}
+}
+
 func TestInjectTLSEnvVars_UpdatesExisting(t *testing.T) {
 	manifest := `apiVersion: apps/v1
 kind: Deployment

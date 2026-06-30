@@ -12,8 +12,6 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -62,12 +60,4 @@ func isNotRegisteredError(err error) bool {
 		err = errors.Unwrap(err)
 	}
 	return false
-}
-
-func isOpenShiftCluster(mgr ctrl.Manager) bool {
-	_, err := mgr.GetRESTMapper().RESTMapping(
-		schema.GroupKind{Group: "config.openshift.io", Kind: "APIServer"},
-	)
-
-	return err == nil
 }
