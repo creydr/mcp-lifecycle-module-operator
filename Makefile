@@ -1,6 +1,6 @@
-IMAGE_REGISTRY ?= quay.io/redhat-user-workloads/mcp-lifecycle-operator-tenant
-IMAGE_NAME ?= mcp-lifecycle-module-operator-main
-IMAGE_TAG ?= latest
+IMAGE_REGISTRY ?= quay.io/opendatahub
+IMAGE_NAME ?= odh-mcp-lifecycle-module-operator
+IMAGE_TAG ?= odh-stable
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 PLATFORM ?= linux/amd64
 CGO_ENABLED ?= 1
