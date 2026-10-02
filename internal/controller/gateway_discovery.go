@@ -23,6 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	v1alpha1 "github.com/opendatahub-io/mcp-lifecycle-module-operator/api/v1alpha1"
@@ -168,4 +169,34 @@ func isConditionTrue(conditions []metav1.Condition, condType string) bool {
 	return false
 }
 
-func (r *MCPLifecycleOperatorReconciler) tryRegisterGatewayWatches() {}
+func (r *MCPLifecycleOperatorReconciler) tryRegisterGatewayWatches() {
+	if r.controller == nil || r.DynamicInformerFactory == nil {
+		return
+	}
+
+	if r.mcpGatewayExtensionCRDAvailable() {
+		r.watchMCPGEOnce.Do(func() {
+			informer := r.DynamicInformerFactory.ForResource(mcpGatewayExtensionGVR).Informer()
+			r.DynamicInformerFactory.Start(make(chan struct{}))
+
+			if err := r.controller.Watch(&source.Informer{
+				Informer: informer,
+				Handler:  r.enqueueComponentCR,
+			}); err != nil {
+				logf.Log.Error(err, "Failed to watch MCPGatewayExtension resources")
+			}
+		})
+
+		r.watchGatewayOnce.Do(func() {
+			informer := r.DynamicInformerFactory.ForResource(gatewayGVR).Informer()
+			r.DynamicInformerFactory.Start(make(chan struct{}))
+
+			if err := r.controller.Watch(&source.Informer{
+				Informer: informer,
+				Handler:  r.enqueueComponentCR,
+			}); err != nil {
+				logf.Log.Error(err, "Failed to watch Gateway resources")
+			}
+		})
+	}
+}
