@@ -43,19 +43,23 @@ var (
 	}
 )
 
+type mcpGatewayExtensionTargetRef struct {
+	Name        string `json:"name"`
+	Namespace   string `json:"namespace,omitempty"`
+	SectionName string `json:"sectionName"`
+}
+
+type mcpGatewayExtensionSpec struct {
+	TargetRef mcpGatewayExtensionTargetRef `json:"targetRef"`
+}
+
+type mcpGatewayExtensionStatus struct {
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
 type mcpGatewayExtension struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              struct {
-		TargetRef struct {
-			Name        string `json:"name"`
-			Namespace   string `json:"namespace,omitempty"`
-			SectionName string `json:"sectionName"`
-		} `json:"targetRef"`
-	} `json:"spec"`
-	Status struct {
-		Conditions []metav1.Condition `json:"conditions,omitempty"`
-	} `json:"status"`
+	Spec   mcpGatewayExtensionSpec   `json:"spec"`
+	Status mcpGatewayExtensionStatus `json:"status"`
 }
 
 func (r *MCPLifecycleOperatorReconciler) mcpGatewayExtensionCRDAvailable() bool {
@@ -95,26 +99,28 @@ func (r *MCPLifecycleOperatorReconciler) discoverMCPGateways(ctx context.Context
 	var result []v1alpha1.MCPGatewayInfo
 
 	for i := range list.Items {
-		raw, err := list.Items[i].MarshalJSON()
+		item := &list.Items[i]
+
+		raw, err := item.MarshalJSON()
 		if err != nil {
-			log.Error(err, "Failed to marshal MCPGatewayExtension", "name", list.Items[i].GetName())
+			log.Error(err, "Failed to marshal MCPGatewayExtension", "name", item.GetName())
 			continue
 		}
 
 		var ext mcpGatewayExtension
 		if err := json.Unmarshal(raw, &ext); err != nil {
-			log.Error(err, "Failed to unmarshal MCPGatewayExtension", "name", list.Items[i].GetName())
+			log.Error(err, "Failed to unmarshal MCPGatewayExtension", "name", item.GetName())
 			continue
 		}
 
 		gwNamespace := ext.Spec.TargetRef.Namespace
 		if gwNamespace == "" {
-			gwNamespace = ext.Namespace
+			gwNamespace = item.GetNamespace()
 		}
 
 		info := v1alpha1.MCPGatewayInfo{
-			Name:      ext.Name,
-			Namespace: ext.Namespace,
+			Name:      item.GetName(),
+			Namespace: item.GetNamespace(),
 			Ready:     isConditionTrue(ext.Status.Conditions, "Ready"),
 			Gateway: v1alpha1.GatewayRef{
 				Name:      ext.Spec.TargetRef.Name,
