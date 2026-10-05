@@ -7,6 +7,9 @@
   "commitMessagePrefix": "[{{baseBranch}}]",
   "ignorePaths": ["/docs/**"],
   "postUpdateOptions": ["gomodTidy"],
+  "dockerfile": {
+    "schedule": ["at any time"]
+  },
   "packageRules": [
     {
       "matchManagers": ["dockerfile"],
