@@ -7,9 +7,6 @@
   "commitMessagePrefix": "[{{baseBranch}}]",
   "ignorePaths": ["/docs/**"],
   "postUpdateOptions": ["gomodTidy"],
-  "dockerfile": {
-    "includePaths": ["Dockerfile.konflux"]
-  },
   "packageRules": [
     {
       "matchManagers": ["dockerfile"],
