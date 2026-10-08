@@ -137,7 +137,12 @@ func (r *MCPLifecycleOperatorReconciler) discoverMCPGateways(ctx context.Context
 			},
 		}
 
-		info.Gateway.Listeners = r.resolveGatewayListeners(ctx, gwNamespace, ext.Spec.TargetRef.Name)
+		listeners, err := r.resolveGatewayListeners(ctx, gwNamespace, ext.Spec.TargetRef.Name)
+		if err != nil {
+			return nil, err
+		}
+
+		info.Gateway.Listeners = listeners
 
 		result = append(result, info)
 	}
@@ -145,25 +150,24 @@ func (r *MCPLifecycleOperatorReconciler) discoverMCPGateways(ctx context.Context
 	return result, nil
 }
 
-func (r *MCPLifecycleOperatorReconciler) resolveGatewayListeners(ctx context.Context, namespace, name string) []v1alpha1.ListenerRef {
-	log := logf.FromContext(ctx)
-
+func (r *MCPLifecycleOperatorReconciler) resolveGatewayListeners(ctx context.Context, namespace, name string) ([]v1alpha1.ListenerRef, error) {
 	obj, err := r.DynamicClient.Resource(gatewayGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		log.V(1).Info("Failed to get Gateway for MCPGatewayExtension", "gateway", name, "namespace", namespace, "error", err)
-		return nil
+		if k8serr.IsNotFound(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("getting Gateway %s/%s: %w", namespace, name, err)
 	}
 
 	raw, err := obj.MarshalJSON()
 	if err != nil {
-		log.Error(err, "Failed to marshal Gateway", "name", name)
-		return nil
+		return nil, fmt.Errorf("marshalling Gateway %s/%s: %w", namespace, name, err)
 	}
 
 	var gw gatewayv1.Gateway
 	if err := json.Unmarshal(raw, &gw); err != nil {
-		log.Error(err, "Failed to unmarshal Gateway", "name", name)
-		return nil
+		return nil, fmt.Errorf("unmarshalling Gateway %s/%s: %w", namespace, name, err)
 	}
 
 	listeners := make([]v1alpha1.ListenerRef, len(gw.Spec.Listeners))
@@ -171,7 +175,7 @@ func (r *MCPLifecycleOperatorReconciler) resolveGatewayListeners(ctx context.Con
 		listeners[i] = v1alpha1.ListenerRef{Name: string(l.Name)}
 	}
 
-	return listeners
+	return listeners, nil
 }
 
 func isConditionTrue(conditions []metav1.Condition, condType string) bool {

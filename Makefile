@@ -94,7 +94,7 @@ e2e-test: ## Run E2E tests (requires a deployed operator on a running cluster).
 
 .PHONY: deploy-gateway-crds
 deploy-gateway-crds: kustomize ## Install Gateway API and MCPGatewayExtension CRDs (no controllers).
-	kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
+	kubectl apply -f "https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml"
 	kubectl wait --for=condition=Established --timeout=120s crd/gateways.gateway.networking.k8s.io
 	$(KUSTOMIZE) build 'https://github.com/Kuadrant/mcp-gateway/config/crd?ref=$(MCP_GATEWAY_VERSION)' | kubectl apply -f -
 	kubectl wait --for=condition=Established --timeout=120s crd/mcpgatewayextensions.mcp.kuadrant.io
