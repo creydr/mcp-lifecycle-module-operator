@@ -5,8 +5,11 @@
     "github>konflux-ci/mintmaker-presets:refresh-rpm-lockfiles"
   ],
   "commitMessagePrefix": "[{{baseBranch}}]",
+  "enabledManagers": ["dockerfile", "gomod", "github-actions", "rpm-lockfile"],
   "ignorePaths": ["/docs/**"],
-  "postUpdateOptions": ["gomodTidy"],
+  "gomod": {
+    "postUpdateOptions": ["gomodTidy"]
+  },
   "dockerfile": {
     "schedule": ["at any time"]
   },
@@ -15,6 +18,18 @@
       "matchManagers": ["dockerfile"],
       "matchFileNames": ["Dockerfile.konflux"],
       "pinDigests": true
+    },
+    {
+      "matchManagers": ["dockerfile"],
+      "groupName": "dockerfile"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "groupName": "gomod"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
     }
   ]
 }
