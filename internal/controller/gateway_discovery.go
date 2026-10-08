@@ -19,14 +19,23 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
+	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	v1alpha1 "github.com/opendatahub-io/mcp-lifecycle-module-operator/api/v1alpha1"
+)
+
+const (
+	mcpGatewayExtensionCRDName = "mcpgatewayextensions.mcp.kuadrant.io"
+	gatewayCRDName             = "gateways.gateway.networking.k8s.io"
 )
 
 var (
@@ -62,38 +71,38 @@ type mcpGatewayExtension struct {
 	Status mcpGatewayExtensionStatus `json:"status"`
 }
 
-func (r *MCPLifecycleOperatorReconciler) mcpGatewayExtensionCRDAvailable() bool {
-	list, err := r.DiscoveryClient.ServerResourcesForGroupVersion(
-		mcpGatewayExtensionGVR.GroupVersion().String(),
-	)
-	if err != nil {
-		return false
-	}
-
-	for _, res := range list.APIResources {
-		if res.Name == mcpGatewayExtensionGVR.Resource {
-			return true
+func (r *MCPLifecycleOperatorReconciler) crdAvailable(ctx context.Context, name string) (bool, error) {
+	crd := &extv1.CustomResourceDefinition{}
+	if err := r.Get(ctx, types.NamespacedName{Name: name}, crd); err != nil {
+		if k8serr.IsNotFound(err) {
+			return false, nil
 		}
+
+		return false, err
 	}
 
-	return false
+	return true, nil
 }
 
-func (r *MCPLifecycleOperatorReconciler) discoverMCPGateways(ctx context.Context) []v1alpha1.MCPGatewayInfo {
+func (r *MCPLifecycleOperatorReconciler) discoverMCPGateways(ctx context.Context) ([]v1alpha1.MCPGatewayInfo, error) {
 	log := logf.FromContext(ctx)
 
-	if !r.mcpGatewayExtensionCRDAvailable() {
-		return nil
+	available, err := r.crdAvailable(ctx, mcpGatewayExtensionCRDName)
+	if err != nil {
+		return nil, fmt.Errorf("checking MCPGatewayExtension CRD availability: %w", err)
+	}
+
+	if !available {
+		return nil, nil
 	}
 
 	list, err := r.DynamicClient.Resource(mcpGatewayExtensionGVR).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		log.Error(err, "Failed to list MCPGatewayExtensions")
-		return nil
+		return nil, fmt.Errorf("listing MCPGatewayExtensions: %w", err)
 	}
 
 	if len(list.Items) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	var result []v1alpha1.MCPGatewayInfo
@@ -133,7 +142,7 @@ func (r *MCPLifecycleOperatorReconciler) discoverMCPGateways(ctx context.Context
 		result = append(result, info)
 	}
 
-	return result
+	return result, nil
 }
 
 func (r *MCPLifecycleOperatorReconciler) resolveGatewayListeners(ctx context.Context, namespace, name string) []v1alpha1.ListenerRef {
@@ -175,33 +184,37 @@ func isConditionTrue(conditions []metav1.Condition, condType string) bool {
 	return false
 }
 
-func (r *MCPLifecycleOperatorReconciler) tryRegisterGatewayWatches() {
+func (r *MCPLifecycleOperatorReconciler) tryRegisterGatewayWatches(ctx context.Context) {
+	log := logf.FromContext(ctx)
+
 	if r.controller == nil || r.DynamicInformerFactory == nil {
 		return
 	}
 
-	if r.mcpGatewayExtensionCRDAvailable() {
+	if available, err := r.crdAvailable(ctx, mcpGatewayExtensionCRDName); err == nil && available {
 		r.watchMCPGEOnce.Do(func() {
 			informer := r.DynamicInformerFactory.ForResource(mcpGatewayExtensionGVR).Informer()
-			r.DynamicInformerFactory.Start(make(chan struct{}))
+			r.DynamicInformerFactory.Start(ctx.Done())
 
 			if err := r.controller.Watch(&source.Informer{
 				Informer: informer,
 				Handler:  r.enqueueComponentCR,
 			}); err != nil {
-				logf.Log.Error(err, "Failed to watch MCPGatewayExtension resources")
+				log.Error(err, "Failed to watch MCPGatewayExtension resources")
 			}
 		})
+	}
 
+	if available, err := r.crdAvailable(ctx, gatewayCRDName); err == nil && available {
 		r.watchGatewayOnce.Do(func() {
 			informer := r.DynamicInformerFactory.ForResource(gatewayGVR).Informer()
-			r.DynamicInformerFactory.Start(make(chan struct{}))
+			r.DynamicInformerFactory.Start(ctx.Done())
 
 			if err := r.controller.Watch(&source.Informer{
 				Informer: informer,
 				Handler:  r.enqueueComponentCR,
 			}); err != nil {
-				logf.Log.Error(err, "Failed to watch Gateway resources")
+				log.Error(err, "Failed to watch Gateway resources")
 			}
 		})
 	}

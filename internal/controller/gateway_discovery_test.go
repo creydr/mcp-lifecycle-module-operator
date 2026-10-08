@@ -18,13 +18,17 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
-	kubefake "k8s.io/client-go/kubernetes/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 var gatewayListKinds = map[schema.GroupVersionResource]string{
@@ -120,40 +124,44 @@ func newFakeDynamicForGateways(objects ...*unstructured.Unstructured) *fakedynam
 	return client
 }
 
-func mcpgeAPIResources() []*metav1.APIResourceList {
-	return []*metav1.APIResourceList{{
-		GroupVersion: "mcp.kuadrant.io/v1",
-		APIResources: []metav1.APIResource{{
-			Name:       "mcpgatewayextensions",
-			Namespaced: true,
-			Kind:       "MCPGatewayExtension",
-		}},
-	}}
+func mcpGatewayExtensionCRD() *extv1.CustomResourceDefinition {
+	return &extv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: mcpGatewayExtensionCRDName},
+	}
 }
 
 func TestDiscoverMCPGateways_CRDNotInstalled(t *testing.T) {
-	kubeClient := kubefake.NewSimpleClientset()
+	cli := fake.NewClientBuilder().WithScheme(testScheme).Build()
+
 	r := &MCPLifecycleOperatorReconciler{
-		DynamicClient:   newFakeDynamicForGateways(),
-		DiscoveryClient: kubeClient.Discovery(),
+		Client:        cli,
+		DynamicClient: newFakeDynamicForGateways(),
 	}
 
-	result := r.discoverMCPGateways(context.Background())
+	result, err := r.discoverMCPGateways(context.Background())
+	if err != nil {
+		t.Errorf("expected no error when CRD not installed, got %v", err)
+	}
 	if len(result) != 0 {
 		t.Errorf("expected empty result when CRD not installed, got %d entries", len(result))
 	}
 }
 
 func TestDiscoverMCPGateways_NoInstances(t *testing.T) {
-	kubeClient := kubefake.NewSimpleClientset()
-	kubeClient.Fake.Resources = mcpgeAPIResources()
+	cli := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(mcpGatewayExtensionCRD()).
+		Build()
 
 	r := &MCPLifecycleOperatorReconciler{
-		DynamicClient:   newFakeDynamicForGateways(),
-		DiscoveryClient: kubeClient.Discovery(),
+		Client:        cli,
+		DynamicClient: newFakeDynamicForGateways(),
 	}
 
-	result := r.discoverMCPGateways(context.Background())
+	result, err := r.discoverMCPGateways(context.Background())
+	if err != nil {
+		t.Errorf("expected no error when no instances exist, got %v", err)
+	}
 	if len(result) != 0 {
 		t.Errorf("expected empty result when no instances exist, got %d entries", len(result))
 	}
@@ -163,15 +171,20 @@ func TestDiscoverMCPGateways_SingleExtensionWithGateway(t *testing.T) {
 	mcpge := newMCPGatewayExtension("ns1", "my-ext", "my-gw", "gw-system", "mcp", true)
 	gw := newGateway("gw-system", "my-gw", "mcp", "mcps")
 
-	kubeClient := kubefake.NewSimpleClientset()
-	kubeClient.Fake.Resources = mcpgeAPIResources()
+	cli := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(mcpGatewayExtensionCRD()).
+		Build()
 
 	r := &MCPLifecycleOperatorReconciler{
-		DynamicClient:   newFakeDynamicForGateways(mcpge, gw),
-		DiscoveryClient: kubeClient.Discovery(),
+		Client:        cli,
+		DynamicClient: newFakeDynamicForGateways(mcpge, gw),
 	}
 
-	result := r.discoverMCPGateways(context.Background())
+	result, err := r.discoverMCPGateways(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(result) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(result))
 	}
@@ -198,15 +211,20 @@ func TestDiscoverMCPGateways_ExtensionNotReady(t *testing.T) {
 	mcpge := newMCPGatewayExtension("ns1", "my-ext", "my-gw", "gw-system", "mcp", false)
 	gw := newGateway("gw-system", "my-gw", "mcp")
 
-	kubeClient := kubefake.NewSimpleClientset()
-	kubeClient.Fake.Resources = mcpgeAPIResources()
+	cli := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(mcpGatewayExtensionCRD()).
+		Build()
 
 	r := &MCPLifecycleOperatorReconciler{
-		DynamicClient:   newFakeDynamicForGateways(mcpge, gw),
-		DiscoveryClient: kubeClient.Discovery(),
+		Client:        cli,
+		DynamicClient: newFakeDynamicForGateways(mcpge, gw),
 	}
 
-	result := r.discoverMCPGateways(context.Background())
+	result, err := r.discoverMCPGateways(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(result) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(result))
 	}
@@ -218,15 +236,20 @@ func TestDiscoverMCPGateways_ExtensionNotReady(t *testing.T) {
 func TestDiscoverMCPGateways_GatewayNotFound(t *testing.T) {
 	mcpge := newMCPGatewayExtension("ns1", "my-ext", "missing-gw", "gw-system", "mcp", true)
 
-	kubeClient := kubefake.NewSimpleClientset()
-	kubeClient.Fake.Resources = mcpgeAPIResources()
+	cli := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(mcpGatewayExtensionCRD()).
+		Build()
 
 	r := &MCPLifecycleOperatorReconciler{
-		DynamicClient:   newFakeDynamicForGateways(mcpge),
-		DiscoveryClient: kubeClient.Discovery(),
+		Client:        cli,
+		DynamicClient: newFakeDynamicForGateways(mcpge),
 	}
 
-	result := r.discoverMCPGateways(context.Background())
+	result, err := r.discoverMCPGateways(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(result) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(result))
 	}
@@ -241,15 +264,20 @@ func TestDiscoverMCPGateways_MultipleExtensions(t *testing.T) {
 	gw1 := newGateway("gw-system", "gw1", "mcp")
 	gw2 := newGateway("gw-system", "gw2", "mcps", "other")
 
-	kubeClient := kubefake.NewSimpleClientset()
-	kubeClient.Fake.Resources = mcpgeAPIResources()
+	cli := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(mcpGatewayExtensionCRD()).
+		Build()
 
 	r := &MCPLifecycleOperatorReconciler{
-		DynamicClient:   newFakeDynamicForGateways(mcpge1, mcpge2, gw1, gw2),
-		DiscoveryClient: kubeClient.Discovery(),
+		Client:        cli,
+		DynamicClient: newFakeDynamicForGateways(mcpge1, mcpge2, gw1, gw2),
 	}
 
-	result := r.discoverMCPGateways(context.Background())
+	result, err := r.discoverMCPGateways(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(result) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(result))
 	}
@@ -259,20 +287,49 @@ func TestDiscoverMCPGateways_DefaultNamespace(t *testing.T) {
 	mcpge := newMCPGatewayExtension("ns1", "my-ext", "my-gw", "", "mcp", true)
 	gw := newGateway("ns1", "my-gw", "mcp")
 
-	kubeClient := kubefake.NewSimpleClientset()
-	kubeClient.Fake.Resources = mcpgeAPIResources()
+	cli := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(mcpGatewayExtensionCRD()).
+		Build()
 
 	r := &MCPLifecycleOperatorReconciler{
-		DynamicClient:   newFakeDynamicForGateways(mcpge, gw),
-		DiscoveryClient: kubeClient.Discovery(),
+		Client:        cli,
+		DynamicClient: newFakeDynamicForGateways(mcpge, gw),
 	}
 
-	result := r.discoverMCPGateways(context.Background())
+	result, err := r.discoverMCPGateways(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(result) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(result))
 	}
 	if result[0].Gateway.Namespace != "ns1" {
 		t.Errorf("expected Gateway namespace defaulted to ns1, got %s", result[0].Gateway.Namespace)
+	}
+}
+
+func TestDiscoverMCPGateways_TransientError(t *testing.T) {
+	cli := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
+				return fmt.Errorf("transient API error")
+			},
+		}).
+		Build()
+
+	r := &MCPLifecycleOperatorReconciler{
+		Client:        cli,
+		DynamicClient: newFakeDynamicForGateways(),
+	}
+
+	result, err := r.discoverMCPGateways(context.Background())
+	if err == nil {
+		t.Error("expected error on transient API failure")
+	}
+	if result != nil {
+		t.Errorf("expected nil result on transient error, got %d entries", len(result))
 	}
 }
 

@@ -289,8 +289,14 @@ func (r *MCPLifecycleOperatorReconciler) reconcile(ctx context.Context, cr *v1al
 	cm.MarkTrue(v1alpha1.ConditionMCPLifecycleOperatorAvailable)
 	cm.AggregateReady()
 
-	cr.Status.AvailableMCPGateways = r.discoverMCPGateways(ctx)
-	r.tryRegisterGatewayWatches()
+	gateways, err := r.discoverMCPGateways(ctx)
+	if err != nil {
+		log.Error(err, "Failed to discover MCP gateways, preserving prior status")
+	} else {
+		cr.Status.AvailableMCPGateways = gateways
+	}
+
+	r.tryRegisterGatewayWatches(ctx)
 
 	if pc.Available {
 		r.setDistributionStatus(cr, pc)
@@ -717,11 +723,6 @@ func (r *MCPLifecycleOperatorReconciler) SetupWithManager(mgr ctrl.Manager) erro
 
 	var err error
 	r.controller, err = b.Build(r)
-	if err != nil {
-		return err
-	}
 
-	r.tryRegisterGatewayWatches()
-
-	return nil
+	return err
 }
