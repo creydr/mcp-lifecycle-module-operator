@@ -170,7 +170,35 @@ func TestDiscoverMCPGateways_NoInstances(t *testing.T) {
 
 func TestDiscoverMCPGateways_SingleExtensionWithGateway(t *testing.T) {
 	mcpge := newMCPGatewayExtension("ns1", "my-ext", "my-gw", "gw-system", "mcp", true)
-	gw := newGateway("gw-system", "my-gw", "mcp", "mcps")
+
+	gw := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "gateway.networking.k8s.io/v1",
+		"kind":       "Gateway",
+		"metadata":   map[string]interface{}{"namespace": "gw-system", "name": "my-gw"},
+		"spec": map[string]interface{}{
+			"gatewayClassName": "istio",
+			"listeners": []interface{}{
+				map[string]interface{}{
+					"name":     "mcp",
+					"hostname": "*.mcp.example.com",
+					"port":     int64(443),
+					"protocol": "HTTPS",
+				},
+				map[string]interface{}{
+					"name":     "mcps",
+					"hostname": "*.mcps.example.com",
+					"port":     int64(443),
+					"protocol": "HTTPS",
+				},
+				map[string]interface{}{
+					"name":     "admin",
+					"hostname": "admin.example.com",
+					"port":     int64(443),
+					"protocol": "HTTPS",
+				},
+			},
+		},
+	}}
 
 	cli := fake.NewClientBuilder().
 		WithScheme(testScheme).
@@ -201,7 +229,7 @@ func TestDiscoverMCPGateways_SingleExtensionWithGateway(t *testing.T) {
 		t.Errorf("unexpected Gateway identity: %s/%s", entry.Gateway.Namespace, entry.Gateway.Name)
 	}
 	if len(entry.Gateway.Listeners) != 2 {
-		t.Fatalf("expected 2 listeners, got %d", len(entry.Gateway.Listeners))
+		t.Fatalf("expected 2 wildcard listeners, got %d", len(entry.Gateway.Listeners))
 	}
 	if entry.Gateway.Listeners[0].Name != "mcp" || entry.Gateway.Listeners[0].Hostname != "*.mcp.example.com" {
 		t.Errorf("unexpected listener[0]: %+v", entry.Gateway.Listeners[0])
@@ -366,6 +394,53 @@ func TestDiscoverMCPGateways_NonWildcardListenersFiltered(t *testing.T) {
 	}
 	if result[0].Gateway.Listeners[0].Name != "wildcard" || result[0].Gateway.Listeners[0].Hostname != "*.mcp.example.com" {
 		t.Errorf("unexpected listener: %+v", result[0].Gateway.Listeners[0])
+	}
+}
+
+func TestDiscoverMCPGateways_AllNonWildcardListeners(t *testing.T) {
+	mcpge := newMCPGatewayExtension("ns1", "my-ext", "my-gw", "ns1", "mcp", true)
+
+	gw := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "gateway.networking.k8s.io/v1",
+		"kind":       "Gateway",
+		"metadata":   map[string]interface{}{"namespace": "ns1", "name": "my-gw"},
+		"spec": map[string]interface{}{
+			"gatewayClassName": "istio",
+			"listeners": []interface{}{
+				map[string]interface{}{
+					"name":     "specific",
+					"hostname": "api.example.com",
+					"port":     int64(443),
+					"protocol": "HTTPS",
+				},
+				map[string]interface{}{
+					"name":     "catchall",
+					"port":     int64(80),
+					"protocol": "HTTP",
+				},
+			},
+		},
+	}}
+
+	cli := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(mcpGatewayExtensionCRD()).
+		Build()
+
+	r := &MCPLifecycleOperatorReconciler{
+		Client:        cli,
+		DynamicClient: newFakeDynamicForGateways(mcpge, gw),
+	}
+
+	result, err := r.discoverMCPGateways(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result))
+	}
+	if len(result[0].Gateway.Listeners) != 0 {
+		t.Errorf("expected empty listeners when no wildcard hostnames, got %d", len(result[0].Gateway.Listeners))
 	}
 }
 
