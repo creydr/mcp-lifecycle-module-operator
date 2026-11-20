@@ -210,14 +210,22 @@ func isConditionTrue(conditions []metav1.Condition, condType string) bool {
 	return false
 }
 
-func (r *MCPLifecycleOperatorReconciler) tryRegisterGatewayWatches(ctx context.Context) {
+// tryRegisterGatewayWatches registers dynamic informer watches for
+// MCPGatewayExtension and Gateway resources. Returns true when at least one
+// gateway CRD is installed, signalling the caller to schedule a periodic
+// requeue as a fallback in case watch delivery is delayed.
+func (r *MCPLifecycleOperatorReconciler) tryRegisterGatewayWatches(ctx context.Context) bool {
 	log := logf.FromContext(ctx)
 
 	if r.controller == nil || r.DynamicInformerFactory == nil {
-		return
+		return false
 	}
 
+	gatewayCRDsPresent := false
+
 	if available, err := r.crdAvailable(ctx, mcpGatewayExtensionCRDName); err == nil && available {
+		gatewayCRDsPresent = true
+
 		r.watchMCPGEOnce.Do(func() {
 			informer := r.DynamicInformerFactory.ForResource(mcpGatewayExtensionGVR).Informer()
 			r.DynamicInformerFactory.Start(ctx.Done())
@@ -232,6 +240,8 @@ func (r *MCPLifecycleOperatorReconciler) tryRegisterGatewayWatches(ctx context.C
 	}
 
 	if available, err := r.crdAvailable(ctx, gatewayCRDName); err == nil && available {
+		gatewayCRDsPresent = true
+
 		r.watchGatewayOnce.Do(func() {
 			informer := r.DynamicInformerFactory.ForResource(gatewayGVR).Informer()
 			r.DynamicInformerFactory.Start(ctx.Done())
@@ -244,4 +254,6 @@ func (r *MCPLifecycleOperatorReconciler) tryRegisterGatewayWatches(ctx context.C
 			}
 		})
 	}
+
+	return gatewayCRDsPresent
 }

@@ -77,7 +77,8 @@ type MCPLifecycleOperatorReconciler struct {
 }
 
 const (
-	defaultRequeueDelay = 10 * time.Second
+	defaultRequeueDelay        = 10 * time.Second
+	gatewayDiscoveryRequeueMax = 60 * time.Second
 
 	platformConfigName     = "odh-" + v1alpha1.MCPLifecycleOperatorServiceName + "-config"
 	platformVersionKey     = "platformVersion"
@@ -225,7 +226,7 @@ func (r *MCPLifecycleOperatorReconciler) reconcile(ctx context.Context, cr *v1al
 		cr.Status.AvailableMCPGateways = gateways
 	}
 
-	r.tryRegisterGatewayWatches(ctx)
+	gatewayCRDsPresent := r.tryRegisterGatewayWatches(ctx)
 
 	tlsConfig, err := ResolveTLSConfig(ctx, r.Client)
 	if err != nil {
@@ -323,6 +324,9 @@ func (r *MCPLifecycleOperatorReconciler) reconcile(ctx context.Context, cr *v1al
 	result := r.reconcileStorageMigration(ctx, cr, cm)
 	if tlsConfig.UsedTransientFallback && result.RequeueAfter == 0 {
 		result.RequeueAfter = defaultRequeueDelay
+	}
+	if gatewayCRDsPresent && result.RequeueAfter == 0 {
+		result.RequeueAfter = gatewayDiscoveryRequeueMax
 	}
 	return result, nil
 }
