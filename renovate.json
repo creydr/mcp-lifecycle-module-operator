@@ -25,6 +25,15 @@
     },
     {
       "matchManagers": ["gomod"],
+      "matchPackageNames": [
+        "github.com/kubernetes-sigs/mcp-lifecycle-operator",
+        "github.com/opendatahub-io/mcp-lifecycle-operator"
+      ],
+      "description": "Managed via operand-image.json and tools/source-update; must stay in sync with the pinned operand image",
+      "enabled": false
+    },
+    {
+      "matchManagers": ["gomod"],
       "groupName": "gomod"
     },
     {
