@@ -1105,6 +1105,9 @@ func TestCheckConversionHealth_ListError_Requeues(t *testing.T) {
 	if !strings.Contains(c.Message, "x509") {
 		t.Errorf("condition message = %q, want it to carry the underlying error", c.Message)
 	}
+	if actions := dyn.Actions(); len(actions) != 1 || actions[0].GetResource().Version != "v1" {
+		t.Errorf("LIST actions = %v, want only the failing v1 LIST", actions)
+	}
 }
 
 func TestCheckConversionHealth_BetaListError_Requeues(t *testing.T) {
@@ -1269,46 +1272,46 @@ func TestCheckConversionHealth_ExpiredContinue_GivesUpAfterCap(t *testing.T) {
 
 func TestCheckConversionHealth_Paginated(t *testing.T) {
 	// The fake dynamic client does not honor Limit/Continue on its own, so drive
-	// pagination explicitly: the first LIST returns a continue token, the second
-	// returns none. Asserting exactly two calls proves the gate follows Continue
-	// rather than stopping after the first page.
+	// pagination explicitly for each version. Each first page returns a token,
+	// and each second page ends the list. This also checks that the token from
+	// v1 is not carried into the v1beta1 list.
 	dyn := newFakeDynamicWithMCPServers()
-	calls := 0
+	calls := map[string]int{}
 	dyn.PrependReactor("list", "mcpservers", func(action clienttesting.Action) (bool, runtime.Object, error) {
-		if action.GetResource().Version == "v1beta1" {
-			return false, nil, nil
-		}
-		calls++
+		version := action.GetResource().Version
+		calls[version]++
 
 		list := &unstructured.UnstructuredList{}
 		list.SetGroupVersionKind(schema.GroupVersionKind{
-			Group: mcpServerGVR.Group, Version: mcpServerGVR.Version, Kind: "MCPServerList",
+			Group: mcpServerGVR.Group, Version: version, Kind: "MCPServerList",
 		})
 
-		switch calls {
+		switch calls[version] {
 		case 1:
-			// First page returns a continue token; the gate must issue a second
-			// LIST. A gate that ignored GetContinue would stop here (calls == 1).
+			// The gate must follow this token with a second LIST.
 			list.Items = []unstructured.Unstructured{*newMCPServer("ns", "server-1")}
-			list.SetContinue("page-2-token")
+			list.SetContinue("page-2-" + version)
 		case 2:
-			// Empty continue token terminates the loop.
 			list.Items = []unstructured.Unstructured{*newMCPServer("ns", "server-2")}
-			list.SetContinue("")
 		default:
-			t.Fatalf("unexpected LIST call #%d (gate did not stop on empty continue)", calls)
+			t.Fatalf("unexpected %s LIST call #%d", version, calls[version])
 		}
 
 		return true, list, nil
 	})
 	r, _, cm := newConversionTestReconciler(dyn)
+	var continues []string
+	r.DynamicClient = &recordingDynamic{Interface: dyn, listContinues: &continues}
 
 	_, ready := r.checkConversionHealth(context.Background(), cm)
 	if !ready {
 		t.Fatal("expected ready=true across a paginated MCPServer list")
 	}
-	if calls != 2 {
-		t.Errorf("expected 2 LIST calls (Continue followed once), got %d", calls)
+	if calls["v1"] != 2 || calls["v1beta1"] != 2 {
+		t.Errorf("LIST calls = %v, want two per version", calls)
+	}
+	if want := []string{"", "page-2-v1", "", "page-2-v1beta1"}; !slices.Equal(continues, want) {
+		t.Errorf("Continue tokens = %v, want %v", continues, want)
 	}
 }
 

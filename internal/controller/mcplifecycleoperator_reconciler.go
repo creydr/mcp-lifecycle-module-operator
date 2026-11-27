@@ -335,8 +335,8 @@ func (r *MCPLifecycleOperatorReconciler) reconcile(ctx context.Context, cr *v1al
 	// steady-state reconciles do not re-run the conversion webhook over every
 	// stored object on each pass. The check re-runs whenever the desired version
 	// moves ahead of the recorded one (the actual upgrade window) or when the
-	// verified marker is absent (a freshly rolled-out controller whose
-	// predecessor advanced status.distribution before this gate existed).
+	// verified marker is absent or has a reason other than
+	// V1ConversionVerified (for example, after a v1beta1-only check).
 	if !conversionHandshakeSettled(cr, pc) {
 		if result, healthy := r.checkConversionHealth(ctx, cm); !healthy {
 			return result, nil
@@ -579,7 +579,7 @@ func (r *MCPLifecycleOperatorReconciler) checkConversionHealthAtVersion(
 				log.Info("MCPServer API not served, deferring platform-version handshake", "version", gvr.Version)
 				cm.MarkFalse(v1alpha1.ConditionMCPLifecycleOperatorAvailable,
 					reasonConversionCheckPending,
-					fmt.Sprintf("MCPServer %s API is not served; deferring until the conversion path is ready", gvr.Version))
+					fmt.Sprintf("MCPServer CRD absent or %s API not yet served; deferring until the conversion path is ready", gvr.Version))
 				cm.AggregateReady()
 
 				return ctrl.Result{RequeueAfter: defaultRequeueDelay}, false
